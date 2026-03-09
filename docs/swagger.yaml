@@ -1,0 +1,1423 @@
+basePath: /api/v1
+definitions:
+  handlers.AuthResponse:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/handlers.UserSummary'
+    type: object
+  handlers.CompleteAssignmentRequest:
+    properties:
+      remarks:
+        example: Resolved on site
+        type: string
+    type: object
+  handlers.CreateAssignmentRequest:
+    properties:
+      remarks:
+        example: Please resolve within 48 hours
+        type: string
+      report_id:
+        type: string
+      staff_id:
+        type: string
+    required:
+    - report_id
+    - staff_id
+    type: object
+  handlers.CreateCategoryRequest:
+    properties:
+      default_department_id:
+        type: string
+      description:
+        example: Streetlight not working
+        type: string
+      name:
+        example: Broken Street Light
+        type: string
+    required:
+    - name
+    type: object
+  handlers.CreateDepartmentRequest:
+    properties:
+      contact_email:
+        example: waste@islamabad.gov
+        type: string
+      description:
+        example: Handles all waste-related issues
+        type: string
+      name:
+        example: Waste Management
+        type: string
+    required:
+    - name
+    type: object
+  handlers.CreateNotificationRequest:
+    properties:
+      message:
+        example: Your report is now in review
+        type: string
+      report_id:
+        type: string
+      title:
+        example: Status Update
+        type: string
+      type:
+        enum:
+        - status_update
+        - safety_alert
+        - nearby_issue
+        example: status_update
+        type: string
+      user_id:
+        type: string
+    required:
+    - message
+    - title
+    - type
+    - user_id
+    type: object
+  handlers.CreateReportRequest:
+    properties:
+      address:
+        example: Street 5, G-9, Islamabad
+        type: string
+      category_id:
+        type: string
+      description:
+        example: Large pile of uncollected garbage
+        type: string
+      image_urls:
+        items:
+          type: string
+        type: array
+      latitude:
+        example: 33.6844
+        type: number
+      longitude:
+        example: 73.0479
+        type: number
+      title:
+        example: Garbage pile on Street 5
+        type: string
+    required:
+    - latitude
+    - longitude
+    type: object
+  handlers.CreateSafetyAlertRequest:
+    properties:
+      expires_in_hours:
+        example: 24
+        type: integer
+      radius_km:
+        example: 2.5
+        type: number
+      report_id:
+        type: string
+    required:
+    - expires_in_hours
+    - radius_km
+    - report_id
+    type: object
+  handlers.LoginRequest:
+    properties:
+      email:
+        example: ali@example.com
+        type: string
+      password:
+        example: secret123
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handlers.RegisterRequest:
+    properties:
+      email:
+        example: ali@example.com
+        type: string
+      full_name:
+        example: Ali Khan
+        type: string
+      password:
+        example: secret123
+        minLength: 6
+        type: string
+      phone:
+        example: "+923001234567"
+        type: string
+      role:
+        enum:
+        - citizen
+        - admin
+        - staff
+        example: citizen
+        type: string
+    required:
+    - email
+    - full_name
+    - password
+    - role
+    type: object
+  handlers.UpdateCategoryRequest:
+    properties:
+      default_department_id:
+        type: string
+      description:
+        type: string
+      name:
+        type: string
+    type: object
+  handlers.UpdateDepartmentRequest:
+    properties:
+      contact_email:
+        type: string
+      description:
+        type: string
+      name:
+        example: Waste Management
+        type: string
+    type: object
+  handlers.UpdateReportStatusRequest:
+    properties:
+      comment:
+        example: Issue is being reviewed
+        type: string
+      status:
+        enum:
+        - submitted
+        - in_review
+        - assigned
+        - in_progress
+        - resolved
+        - rejected
+        example: in_review
+        type: string
+    required:
+    - status
+    type: object
+  handlers.UserSummary:
+    properties:
+      email:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: string
+      role:
+        type: string
+    type: object
+  models.Assignment:
+    properties:
+      assigned_at:
+        type: string
+      assigned_by:
+        type: string
+      assigner:
+        $ref: '#/definitions/models.User'
+      completed_at:
+        type: string
+      id:
+        type: string
+      remarks:
+        type: string
+      report:
+        $ref: '#/definitions/models.Report'
+      report_id:
+        type: string
+      staff:
+        $ref: '#/definitions/models.User'
+      staff_id:
+        type: string
+    type: object
+  models.Department:
+    properties:
+      contact_email:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  models.IssueCategory:
+    properties:
+      created_at:
+        type: string
+      default_department:
+        $ref: '#/definitions/models.Department'
+      default_department_id:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  models.Notification:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      is_read:
+        type: boolean
+      message:
+        type: string
+      report_id:
+        type: string
+      title:
+        type: string
+      type:
+        $ref: '#/definitions/models.NotificationType'
+      user_id:
+        type: string
+    type: object
+  models.NotificationType:
+    enum:
+    - status_update
+    - safety_alert
+    - nearby_issue
+    type: string
+    x-enum-varnames:
+    - NotifStatusUpdate
+    - NotifSafetyAlert
+    - NotifNearbyIssue
+  models.Priority:
+    enum:
+    - low
+    - medium
+    - high
+    type: string
+    x-enum-varnames:
+    - PriorityLow
+    - PriorityMedium
+    - PriorityHigh
+  models.Report:
+    properties:
+      address:
+        type: string
+      ai_confidence_score:
+        type: number
+      category:
+        $ref: '#/definitions/models.IssueCategory'
+      category_id:
+        type: string
+      created_at:
+        type: string
+      department:
+        $ref: '#/definitions/models.Department'
+      department_id:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      images:
+        items:
+          $ref: '#/definitions/models.ReportImage'
+        type: array
+      is_duplicate:
+        type: boolean
+      latitude:
+        type: number
+      longitude:
+        type: number
+      priority_level:
+        $ref: '#/definitions/models.Priority'
+      resolved_at:
+        type: string
+      severity_level:
+        $ref: '#/definitions/models.Severity'
+      status:
+        $ref: '#/definitions/models.ReportStatus'
+      status_history:
+        items:
+          $ref: '#/definitions/models.ReportStatusHistory'
+        type: array
+      title:
+        type: string
+      updated_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: string
+    type: object
+  models.ReportImage:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      image_url:
+        type: string
+      is_primary:
+        type: boolean
+      report_id:
+        type: string
+    type: object
+  models.ReportStatus:
+    enum:
+    - submitted
+    - in_review
+    - assigned
+    - in_progress
+    - resolved
+    - rejected
+    type: string
+    x-enum-varnames:
+    - StatusSubmitted
+    - StatusInReview
+    - StatusAssigned
+    - StatusInProgress
+    - StatusResolved
+    - StatusRejected
+  models.ReportStatusHistory:
+    properties:
+      changed_at:
+        type: string
+      changed_by:
+        type: string
+      changer:
+        $ref: '#/definitions/models.User'
+      comment:
+        type: string
+      id:
+        type: string
+      new_status:
+        type: string
+      old_status:
+        type: string
+      report_id:
+        type: string
+    type: object
+  models.Role:
+    enum:
+    - citizen
+    - admin
+    - staff
+    type: string
+    x-enum-varnames:
+    - RoleCitizen
+    - RoleAdmin
+    - RoleStaff
+  models.SafetyAlert:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      radius_km:
+        type: number
+      report:
+        $ref: '#/definitions/models.Report'
+      report_id:
+        type: string
+    type: object
+  models.Severity:
+    enum:
+    - low
+    - moderate
+    - critical
+    type: string
+    x-enum-varnames:
+    - SeverityLow
+    - SeverityModerate
+    - SeverityCritical
+  models.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_verified:
+        type: boolean
+      phone:
+        type: string
+      role:
+        $ref: '#/definitions/models.Role'
+      updated_at:
+        type: string
+    type: object
+  utils.APIResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  utils.PaginatedResponse:
+    properties:
+      data: {}
+      page:
+        type: integer
+      page_size:
+        type: integer
+      success:
+        type: boolean
+      total_items:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: zaid@example.com
+    name: Zaid Ejaz
+  description: Backend API for the Saaf Islamabad civic issue reporting platform.
+    Citizens can report issues like garbage, broken streetlights, and road damage.
+    Admins assign issues to department staff who resolve them.
+  title: Saaf Islamabad API
+  version: "1.0"
+paths:
+  /assignments:
+    get:
+      description: Get paginated assignments (staff sees own, admin sees all)
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      security:
+      - BearerAuth: []
+      summary: List assignments
+      tags:
+      - Assignments
+    post:
+      consumes:
+      - application/json
+      description: Create an assignment for a report (admin only)
+      parameters:
+      - description: Assignment data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateAssignmentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Assignment'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Assign report to staff
+      tags:
+      - Assignments
+  /assignments/{id}/complete:
+    patch:
+      consumes:
+      - application/json
+      description: Mark an assignment as completed (staff)
+      parameters:
+      - description: Assignment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Completion details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CompleteAssignmentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Assignment'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Complete assignment
+      tags:
+      - Assignments
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate with email and password
+      parameters:
+      - description: Login credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handlers.AuthResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      summary: Login
+      tags:
+      - Auth
+  /auth/me:
+    get:
+      description: Return the authenticated user's profile
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.User'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get current user
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a citizen, admin, or staff account
+      parameters:
+      - description: Registration payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handlers.AuthResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      summary: Register a new user
+      tags:
+      - Auth
+  /categories:
+    get:
+      description: Get all issue categories
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/models.IssueCategory'
+                  type: array
+              type: object
+      summary: List categories
+      tags:
+      - Categories
+    post:
+      consumes:
+      - application/json
+      description: Add a new issue category (admin only)
+      parameters:
+      - description: Category data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.IssueCategory'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create issue category
+      tags:
+      - Categories
+  /categories/{id}:
+    delete:
+      description: Remove an issue category (admin only)
+      parameters:
+      - description: Category UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete category
+      tags:
+      - Categories
+    get:
+      description: Get issue category by ID
+      parameters:
+      - description: Category UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.IssueCategory'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      summary: Get category
+      tags:
+      - Categories
+    put:
+      consumes:
+      - application/json
+      description: Update issue category (admin only)
+      parameters:
+      - description: Category UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.IssueCategory'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update category
+      tags:
+      - Categories
+  /departments:
+    get:
+      description: Get all departments
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/models.Department'
+                  type: array
+              type: object
+      summary: List departments
+      tags:
+      - Departments
+    post:
+      consumes:
+      - application/json
+      description: Add a new department (admin only)
+      parameters:
+      - description: Department data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateDepartmentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Department'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create department
+      tags:
+      - Departments
+  /departments/{id}:
+    delete:
+      description: Remove a department (admin only)
+      parameters:
+      - description: Department UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete department
+      tags:
+      - Departments
+    get:
+      description: Get department by ID
+      parameters:
+      - description: Department UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Department'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      summary: Get department
+      tags:
+      - Departments
+    put:
+      consumes:
+      - application/json
+      description: Update department details (admin only)
+      parameters:
+      - description: Department UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateDepartmentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Department'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update department
+      tags:
+      - Departments
+  /notifications:
+    get:
+      description: Get notifications for the authenticated user
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      - description: Only unread
+        in: query
+        name: unread
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      security:
+      - BearerAuth: []
+      summary: List my notifications
+      tags:
+      - Notifications
+    post:
+      consumes:
+      - application/json
+      description: Send a notification to a user (admin/system)
+      parameters:
+      - description: Notification data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateNotificationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Notification'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create notification
+      tags:
+      - Notifications
+  /notifications/{id}/read:
+    patch:
+      description: Mark a single notification as read
+      parameters:
+      - description: Notification UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark notification as read
+      tags:
+      - Notifications
+  /notifications/read-all:
+    patch:
+      description: Mark all notifications as read for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark all notifications as read
+      tags:
+      - Notifications
+  /reports:
+    get:
+      description: Get paginated reports with optional filters
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      - description: Filter by status
+        in: query
+        name: status
+        type: string
+      - description: Filter by category UUID
+        in: query
+        name: category_id
+        type: string
+      - description: Filter by department UUID
+        in: query
+        name: department_id
+        type: string
+      - description: Filter by severity (low, moderate, critical)
+        in: query
+        name: severity
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      security:
+      - BearerAuth: []
+      summary: List reports
+      tags:
+      - Reports
+    post:
+      consumes:
+      - application/json
+      description: Submit a new issue report (citizen)
+      parameters:
+      - description: Report data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateReportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Report'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create report
+      tags:
+      - Reports
+  /reports/{id}:
+    get:
+      description: Get a single report with full details
+      parameters:
+      - description: Report UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Report'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get report
+      tags:
+      - Reports
+  /reports/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Change report status (admin/staff)
+      parameters:
+      - description: Report UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New status
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateReportStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Report'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update report status
+      tags:
+      - Reports
+  /reports/stats:
+    get:
+      description: Get aggregate statistics for the dashboard
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Report statistics
+      tags:
+      - Reports
+  /safety-alerts:
+    get:
+      description: Get all currently active (non-expired) safety alerts
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      summary: List active safety alerts
+      tags:
+      - Safety Alerts
+    post:
+      consumes:
+      - application/json
+      description: Create a safety alert for a critical report (admin only)
+      parameters:
+      - description: Alert data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateSafetyAlertRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SafetyAlert'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Create safety alert
+      tags:
+      - Safety Alerts
+  /safety-alerts/{id}:
+    delete:
+      description: Remove a safety alert (admin only)
+      parameters:
+      - description: Alert UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete safety alert
+      tags:
+      - Safety Alerts
+    get:
+      description: Get a single safety alert by ID
+      parameters:
+      - description: Alert UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.SafetyAlert'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      summary: Get safety alert
+      tags:
+      - Safety Alerts
+  /users:
+    get:
+      description: Get paginated list of users (admin only)
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      - description: Filter by role (citizen, admin, staff)
+        in: query
+        name: role
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - Users
+  /users/{id}:
+    delete:
+      description: Set user is_active to false (admin only)
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Deactivate user (soft delete)
+      tags:
+      - Users
+    get:
+      description: Retrieve a single user
+      parameters:
+      - description: User UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.User'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user by ID
+      tags:
+      - Users
+securityDefinitions:
+  BearerAuth:
+    description: 'Type "Bearer" followed by a space and your JWT token. Example: **Bearer
+      eyJhbGci...**'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

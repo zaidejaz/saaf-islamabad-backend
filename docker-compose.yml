@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: saaf_islamabad_db
+    environment:
+      POSTGRES_USER: saaf_user
+      POSTGRES_PASSWORD: saaf_secret
+      POSTGRES_DB: saaf_islamabad
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saaf_user -d saaf_islamabad"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
