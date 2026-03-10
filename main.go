@@ -53,6 +53,7 @@ func main() {
 			spec.Schemes = []string{"http"}
 		} else {
 			spec.Host = baseURL
+			spec.Schemes = []string{"http", "https"}
 		}
 	}
 
