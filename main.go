@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/swaggo/swag"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -41,11 +43,23 @@ func main() {
 
 	database.Connect(cfg)
 
+	if spec, ok := swag.GetSwagger("swagger").(*swag.Spec); ok {
+		baseURL := cfg.BaseURL
+		if strings.HasPrefix(baseURL, "https://") {
+			spec.Host = strings.TrimPrefix(baseURL, "https://")
+			spec.Schemes = []string{"https"}
+		} else if strings.HasPrefix(baseURL, "http://") {
+			spec.Host = strings.TrimPrefix(baseURL, "http://")
+			spec.Schemes = []string{"http"}
+		} else {
+			spec.Host = baseURL
+		}
+	}
+
 	r := gin.Default()
 
 	r.Use(middleware.CORS())
 
-	// Swagger UI at /swagger/index.html (like FastAPI /docs)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Dedicated OpenAPI JSON endpoint for frontend devs
@@ -62,8 +76,8 @@ func main() {
 
 	addr := ":" + cfg.ServerPort
 	log.Printf("server starting on %s", addr)
-	log.Printf("swagger docs: http://localhost:%s/swagger/index.html", cfg.ServerPort)
-	log.Printf("openapi spec: http://localhost:%s/openapi.json", cfg.ServerPort)
+	log.Printf("swagger docs: %s/swagger/index.html", cfg.BaseURL)
+	log.Printf("openapi spec: %s/openapi.json", cfg.BaseURL)
 
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("server failed: %v", err)

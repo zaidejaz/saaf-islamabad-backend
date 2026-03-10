@@ -18,6 +18,7 @@ type Config struct {
 
 	ServerPort string
 	GinMode    string
+	BaseURL    string
 
 	SuperAdminName     string
 	SuperAdminEmail    string
@@ -38,6 +39,7 @@ func Load() *Config {
 		JWTExpiryHours: expiry,
 		ServerPort:         getEnv("SERVER_PORT", "8080"),
 		GinMode:            getEnv("GIN_MODE", "debug"),
+		BaseURL:            getEnv("BASE_URL", "localhost:8080"),
 		SuperAdminName:     getEnv("SUPER_ADMIN_NAME", "Super Admin"),
 		SuperAdminEmail:    getEnv("SUPER_ADMIN_EMAIL", "admin@saafislamabad.pk"),
 		SuperAdminPassword: getEnv("SUPER_ADMIN_PASSWORD", ""),
