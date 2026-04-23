@@ -10,3 +10,5 @@ func main() {
     hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
     fmt.Println(string(hash))
 }
+
+// hash.go
