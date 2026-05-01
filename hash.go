@@ -11,4 +11,4 @@ func main() {
     fmt.Println(string(hash))
 }
 
-// hash.go
+// hash.go ...
