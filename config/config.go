@@ -19,6 +19,7 @@ type Config struct {
 	ServerPort string
 	GinMode    string
 	BaseURL    string
+	TrustedProxies string
 
 	SuperAdminName     string
 	SuperAdminEmail    string
@@ -40,6 +41,7 @@ func Load() *Config {
 		ServerPort:         getEnv("SERVER_PORT", "8080"),
 		GinMode:            getEnv("GIN_MODE", "debug"),
 		BaseURL:            getEnv("BASE_URL", "localhost:8080"),
+		TrustedProxies:     getEnv("TRUSTED_PROXIES", "127.0.0.1,::1"),
 		SuperAdminName:     getEnv("SUPER_ADMIN_NAME", "Super Admin"),
 		SuperAdminEmail:    getEnv("SUPER_ADMIN_EMAIL", "admin@saafislamabad.pk"),
 		SuperAdminPassword: getEnv("SUPER_ADMIN_PASSWORD", ""),

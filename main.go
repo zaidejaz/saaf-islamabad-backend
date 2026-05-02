@@ -58,6 +58,13 @@ func main() {
 	}
 
 	r := gin.Default()
+	trustedProxies := strings.Split(cfg.TrustedProxies, ",")
+	for i := range trustedProxies {
+		trustedProxies[i] = strings.TrimSpace(trustedProxies[i])
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 
 	r.Use(middleware.CORS())
 
