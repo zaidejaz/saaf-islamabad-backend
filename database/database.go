@@ -79,6 +79,13 @@ func applySchemaPatches() error {
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users (phone) WHERE phone IS NOT NULL`,
 		`DROP INDEX IF EXISTS idx_users_email`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL`,
+		// Hard guarantee at the DB layer that a department can have at most
+		// one active staff member at a time. The handler logic still does
+		// the up-front check so we can return a friendly error, but this
+		// index protects against races and data drift.
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_staff_per_dept
+			ON users (department_id)
+			WHERE role = 'staff' AND is_active = true AND department_id IS NOT NULL`,
 	}
 	for _, sql := range statements {
 		if err := DB.Exec(sql).Error; err != nil {

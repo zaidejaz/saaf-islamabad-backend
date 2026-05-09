@@ -84,7 +84,20 @@ func CreateAssignment(c *gin.Context) {
 	})
 
 	database.DB.Preload("Staff").Preload("Worker").Preload("Assigner").Preload("Report").
+		Preload("Report.Department").
 		First(&assignment, "id = ?", assignment.ID)
+
+	// Lifecycle: notify citizen + assigned staff. If the admin already
+	// dispatched a worker in the same call, fire the in-progress hook too.
+	deptName := ""
+	if assignment.Report.Department != nil {
+		deptName = assignment.Report.Department.Name
+	}
+	notifyReportAssigned(assignment.Report, staff, deptName)
+	if assignment.WorkerID != nil {
+		notifyReportInProgress(assignment.Report)
+	}
+
 	utils.Created(c, assignment)
 }
 
@@ -157,6 +170,7 @@ func AssignWorker(c *gin.Context) {
 
 	// Move the report to in_progress when a worker is in the field.
 	oldStatus := string(report.Status)
+	transitionedToInProgress := false
 	if report.Status != models.StatusInProgress && report.Status != models.StatusResolved {
 		report.Status = models.StatusInProgress
 		report.UpdatedAt = &now
@@ -169,16 +183,19 @@ func AssignWorker(c *gin.Context) {
 			NewStatus: string(models.StatusInProgress),
 			Comment:   "Worker dispatched: " + worker.FullName,
 		})
+		transitionedToInProgress = true
 	}
 
 	// Notify the worker so their app surfaces the new assignment instantly.
-	_ = database.DB.Create(&models.Notification{
-		UserID:   worker.ID,
-		ReportID: &report.ID,
-		Title:    "New assignment",
-		Message:  "A new report has been dispatched to you. Open the worker app to see route details.",
-		Type:     models.NotifStatusUpdate,
-	}).Error
+	notifyOnce(worker.ID, &report.ID,
+		"New assignment",
+		"A new report has been dispatched to you. Open the worker app to see route details.",
+		models.NotifStatusUpdate)
+
+	// Lifecycle: tell the citizen work has begun.
+	if transitionedToInProgress {
+		notifyReportInProgress(report)
+	}
 
 	database.DB.Preload("Staff").Preload("Worker").Preload("Report").
 		First(&assignment, "id = ?", assignment.ID)
@@ -259,6 +276,7 @@ func CompleteAssignment(c *gin.Context) {
 	database.DB.Save(&assignment)
 
 	var report models.Report
+	resolvedNow := false
 	if err := database.DB.First(&report, "id = ?", assignment.ReportID).Error; err == nil {
 		userID := c.MustGet("user_id").(uuid.UUID)
 		oldStatus := string(report.Status)
@@ -274,8 +292,14 @@ func CompleteAssignment(c *gin.Context) {
 			NewStatus: string(models.StatusResolved),
 			Comment:   "Assignment completed",
 		})
+		resolvedNow = oldStatus != string(models.StatusResolved)
 	}
 
 	database.DB.Preload("Report").Preload("Staff").Preload("Worker").First(&assignment, "id = ?", assignment.ID)
+
+	if resolvedNow {
+		notifyReportResolved(assignment.Report)
+	}
+
 	utils.OK(c, assignment)
 }

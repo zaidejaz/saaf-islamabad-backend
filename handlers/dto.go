@@ -108,6 +108,19 @@ type AssignWorkerRequest struct {
 	Remarks   string    `json:"remarks,omitempty"`
 }
 
+// ── Users (admin) ───────────────────────────────────
+
+// UpdateUserRequest is the admin payload for editing a user. All fields
+// are optional; only the supplied ones are mutated.
+type UpdateUserRequest struct {
+	FullName     *string    `json:"full_name,omitempty" example:"Ali Khan"`
+	Email        *string    `json:"email,omitempty" example:"ali@saafislamabad.pk"`
+	Phone        *string    `json:"phone,omitempty" example:"+923001234567"`
+	Role         *string    `json:"role,omitempty" example:"staff"`
+	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
+	IsVerified   *bool      `json:"is_verified,omitempty"`
+}
+
 // ── Worker ──────────────────────────────────────────
 
 type UpdateWorkerProfileRequest struct {

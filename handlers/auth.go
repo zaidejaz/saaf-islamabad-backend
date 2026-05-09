@@ -102,6 +102,23 @@ func Register(c *gin.Context) {
 			user.Phone = &phone
 		}
 
+		// Staff registration: department is mandatory and exclusive — only
+		// one active staff per department at a time.
+		if role == models.RoleStaff {
+			if req.DepartmentID == nil {
+				utils.BadRequest(c, "department_id is required for staff accounts")
+				return
+			}
+			if !departmentExists(*req.DepartmentID) {
+				utils.BadRequest(c, "department not found")
+				return
+			}
+			if err := ensureStaffDepartmentSlot(req.DepartmentID, nil); err != nil {
+				utils.Error(c, http.StatusConflict, err.Error())
+				return
+			}
+		}
+
 	default:
 		utils.BadRequest(c, "invalid role")
 		return

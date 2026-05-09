@@ -71,6 +71,11 @@ func CreateReport(c *gin.Context) {
 	})
 
 	database.DB.Preload("Category").Preload("Department").Preload("Images").First(&report, "id = ?", report.ID)
+
+	// Lifecycle: report submitted — confirm to citizen, and ping the active
+	// staff of the auto-routed department (if any).
+	notifyReportSubmitted(report)
+
 	utils.Created(c, report)
 }
 
@@ -205,6 +210,19 @@ func UpdateReportStatus(c *gin.Context) {
 	})
 
 	database.DB.Preload("Category").Preload("Department").Preload("Images").First(&report, "id = ?", report.ID)
+
+	// Lifecycle: dispatch a notification appropriate to the new status.
+	if oldStatus != req.Status {
+		switch models.ReportStatus(req.Status) {
+		case models.StatusInProgress:
+			notifyReportInProgress(report)
+		case models.StatusResolved:
+			notifyReportResolved(report)
+		case models.StatusRejected:
+			notifyReportRejected(report, req.Comment)
+		}
+	}
+
 	utils.OK(c, report)
 }
 

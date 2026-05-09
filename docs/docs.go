@@ -1755,14 +1755,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get paginated list of users (admin only)",
+                "description": "Paginated list of users. Includes the linked department object (not just the id) for staff. Filter by role with ` + "`" + `?role=` + "`" + `. Soft-deleted accounts are excluded by default; pass ` + "`" + `?include_inactive=true` + "`" + ` to include them.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Users"
                 ],
-                "summary": "List users",
+                "summary": "List users (admin)",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1783,6 +1783,12 @@ const docTemplate = `{
                         "description": "Filter by role (citizen, admin, staff, worker)",
                         "name": "role",
                         "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Include soft-deleted users",
+                        "name": "include_inactive",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1802,14 +1808,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retrieve a single user",
+                "description": "Includes the linked department object (not just the id).",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Users"
                 ],
-                "summary": "Get user by ID",
+                "summary": "Get user by ID (admin)",
                 "parameters": [
                     {
                         "type": "string",
@@ -1817,6 +1823,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Allow fetching soft-deleted users",
+                        "name": "include_inactive",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -1852,14 +1864,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Anonymises the user's email + name and marks the account inactive. Linked records (reports, assignments, messages, analytics) remain queryable. Admin only — to delete workers, staff use DELETE /workers/{id}.",
+                "description": "Anonymises the user's email + name and marks the account inactive. Linked records (reports, assignments, messages, analytics) remain queryable. Admins use this for staff/citizens; staff use DELETE /workers/{id} for workers.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Users"
                 ],
-                "summary": "Soft-delete a user",
+                "summary": "Soft-delete a user (admin)",
                 "parameters": [
                     {
                         "type": "string",
@@ -1878,6 +1890,138 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Edit any subset of ` + "`" + `full_name` + "`" + `, ` + "`" + `email` + "`" + `, ` + "`" + `phone` + "`" + `, ` + "`" + `role` + "`" + `, ` + "`" + `department_id` + "`" + `, ` + "`" + `is_verified` + "`" + `. The \"one active staff per department\" rule is enforced: changing a user's role to ` + "`" + `staff` + "`" + ` and/or moving an active staff member to a new department is rejected if that department already has another active staff member. Cannot change a user's ` + "`" + `is_active` + "`" + ` flag — use the dedicated soft-delete and reactivate endpoints for that.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Update a user (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.User"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/reactivate": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Restores a previously deactivated account. The \"one active staff per department\" rule is re-checked at this point — reactivation will fail with 409 if the user is staff and their department already has another active staff. Anonymised email/phone/name fields are not auto-restored; admin should follow up with PATCH /users/{id} to set fresh contact info if needed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Reactivate a soft-deleted user (admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.User"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/utils.APIResponse"
                         }
@@ -2567,6 +2711,33 @@ const docTemplate = `{
                         "rejected"
                     ],
                     "example": "in_review"
+                }
+            }
+        },
+        "handlers.UpdateUserRequest": {
+            "type": "object",
+            "properties": {
+                "department_id": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "ali@saafislamabad.pk"
+                },
+                "full_name": {
+                    "type": "string",
+                    "example": "Ali Khan"
+                },
+                "is_verified": {
+                    "type": "boolean"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+923001234567"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "staff"
                 }
             }
         },

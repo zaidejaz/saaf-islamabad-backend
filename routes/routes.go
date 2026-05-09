@@ -95,6 +95,8 @@ func Setup(r *gin.Engine) {
 	{
 		admin.GET("/users", handlers.ListUsers)
 		admin.GET("/users/:id", handlers.GetUser)
+		admin.PATCH("/users/:id", handlers.UpdateUser)
+		admin.PATCH("/users/:id/reactivate", handlers.ReactivateUser)
 		admin.DELETE("/users/:id", handlers.DeactivateUser)
 
 		admin.POST("/departments", handlers.CreateDepartment)
