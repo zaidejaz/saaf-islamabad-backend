@@ -68,11 +68,13 @@ func (r *Report) BeforeCreate(tx *gorm.DB) error {
 }
 
 type ReportImage struct {
-	ID        uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
-	ReportID  uuid.UUID `gorm:"type:uuid;not null;index" json:"report_id"`
-	ImageURL  string    `gorm:"type:text;not null" json:"image_url"`
-	IsPrimary bool      `gorm:"default:false" json:"is_primary"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ReportID     uuid.UUID  `gorm:"type:uuid;not null;index" json:"report_id"`
+	ImageURL     string     `gorm:"type:text;not null" json:"image_url"`
+	IsPrimary    bool       `gorm:"default:false" json:"is_primary"`
+	IsResolution bool       `gorm:"default:false" json:"is_resolution"`
+	UploadedBy   *uuid.UUID `gorm:"type:uuid" json:"uploaded_by,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 func (ri *ReportImage) BeforeCreate(tx *gorm.DB) error {

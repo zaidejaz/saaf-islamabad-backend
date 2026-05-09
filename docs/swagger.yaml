@@ -1,5 +1,17 @@
 basePath: /api/v1
 definitions:
+  handlers.AssignWorkerRequest:
+    properties:
+      remarks:
+        type: string
+      route_info:
+        example: Use the back entrance off Margalla Rd
+        type: string
+      worker_id:
+        type: string
+    required:
+    - worker_id
+    type: object
   handlers.AuthResponse:
     properties:
       token:
@@ -20,7 +32,12 @@ definitions:
         type: string
       report_id:
         type: string
+      route_info:
+        example: Approach from Street 7, look for the blue gate
+        type: string
       staff_id:
+        type: string
+      worker_id:
         type: string
     required:
     - report_id
@@ -38,6 +55,13 @@ definitions:
         type: string
     required:
     - name
+    type: object
+  handlers.CreateConversationRequest:
+    properties:
+      participant_id:
+        type: string
+    required:
+    - participant_id
     type: object
   handlers.CreateDepartmentRequest:
     properties:
@@ -123,17 +147,24 @@ definitions:
   handlers.LoginRequest:
     properties:
       email:
-        example: ali@example.com
+        example: admin@saafislamabad.pk
+        type: string
+      identifier:
+        example: "+923001234567"
         type: string
       password:
         example: secret123
         type: string
+      phone:
+        example: "+923001234567"
+        type: string
     required:
-    - email
     - password
     type: object
   handlers.RegisterRequest:
     properties:
+      department_id:
+        type: string
       email:
         example: ali@example.com
         type: string
@@ -152,13 +183,23 @@ definitions:
         - citizen
         - admin
         - staff
+        - worker
         example: citizen
         type: string
     required:
-    - email
     - full_name
     - password
     - role
+    type: object
+  handlers.SendMessageRequest:
+    properties:
+      content:
+        example: Heading to site now.
+        maxLength: 5000
+        minLength: 1
+        type: string
+    required:
+    - content
     type: object
   handlers.UpdateCategoryRequest:
     properties:
@@ -197,6 +238,18 @@ definitions:
     required:
     - status
     type: object
+  handlers.UpdateWorkerProfileRequest:
+    properties:
+      email:
+        example: ahmed@saafislamabad.pk
+        type: string
+      full_name:
+        example: Ahmed Raza
+        type: string
+      phone:
+        example: "+923001234567"
+        type: string
+    type: object
   handlers.UserSummary:
     properties:
       email:
@@ -204,6 +257,8 @@ definitions:
       full_name:
         type: string
       id:
+        type: string
+      phone:
         type: string
       role:
         type: string
@@ -218,6 +273,8 @@ definitions:
         $ref: '#/definitions/models.User'
       completed_at:
         type: string
+      dispatched_at:
+        type: string
       id:
         type: string
       remarks:
@@ -226,9 +283,64 @@ definitions:
         $ref: '#/definitions/models.Report'
       report_id:
         type: string
+      resolution_image_url:
+        description: |-
+          URL of the resolution image uploaded by the worker once the issue
+          is fixed on-site. Mirrored onto the report's image set as well.
+        type: string
+      route_info:
+        description: |-
+          Route / location info delivered to the worker. Free-form so staff can
+          drop a Google Maps link, written directions, or a meeting point.
+        type: string
+      route_latitude:
+        description: |-
+          Latitude/Longitude duplicated from Report at dispatch time so the
+          worker has an authoritative pin even if the report is later edited.
+        type: number
+      route_longitude:
+        type: number
       staff:
         $ref: '#/definitions/models.User'
       staff_id:
+        type: string
+      worker:
+        $ref: '#/definitions/models.User'
+      worker_id:
+        type: string
+    type: object
+  models.Conversation:
+    properties:
+      channel:
+        $ref: '#/definitions/models.MessageChannel'
+      created_at:
+        type: string
+      id:
+        type: string
+      last_message_at:
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/models.Message'
+        type: array
+      participants:
+        items:
+          $ref: '#/definitions/models.ConversationParticipant'
+        type: array
+    type: object
+  models.ConversationParticipant:
+    properties:
+      conversation_id:
+        type: string
+      id:
+        type: string
+      joined_at:
+        type: string
+      last_read_at:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
         type: string
     type: object
   models.Department:
@@ -259,6 +371,35 @@ definitions:
       name:
         type: string
     type: object
+  models.Message:
+    properties:
+      content:
+        type: string
+      conversation_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      is_read:
+        type: boolean
+      read_at:
+        type: string
+      receiver_id:
+        type: string
+      sender:
+        $ref: '#/definitions/models.User'
+      sender_id:
+        type: string
+    type: object
+  models.MessageChannel:
+    enum:
+    - admin_staff
+    - staff_worker
+    type: string
+    x-enum-varnames:
+    - ChannelAdminStaff
+    - ChannelStaffWorker
   models.Notification:
     properties:
       created_at:
@@ -359,7 +500,11 @@ definitions:
         type: string
       is_primary:
         type: boolean
+      is_resolution:
+        type: boolean
       report_id:
+        type: string
+      uploaded_by:
         type: string
     type: object
   models.ReportStatus:
@@ -402,11 +547,13 @@ definitions:
     - citizen
     - admin
     - staff
+    - worker
     type: string
     x-enum-varnames:
     - RoleCitizen
     - RoleAdmin
     - RoleStaff
+    - RoleWorker
   models.SafetyAlert:
     properties:
       created_at:
@@ -435,6 +582,12 @@ definitions:
   models.User:
     properties:
       created_at:
+        type: string
+      deleted_at:
+        type: string
+      department:
+        $ref: '#/definitions/models.Department'
+      department_id:
         type: string
       email:
         type: string
@@ -488,7 +641,8 @@ info:
 paths:
   /assignments:
     get:
-      description: Get paginated assignments (staff sees own, admin sees all)
+      description: Get paginated assignments. Staff sees own, worker sees own dispatched,
+        admin sees all.
       parameters:
       - default: 1
         description: Page number
@@ -515,7 +669,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create an assignment for a report (admin only)
+      description: Creates the staff-level ownership of a report. Optionally a worker
+        can be dispatched immediately by including `worker_id`.
       parameters:
       - description: Assignment data
         in: body
@@ -541,14 +696,58 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: Assign report to staff
+      summary: Assign report to staff (admin)
+      tags:
+      - Assignments
+  /assignments/{id}/assign-worker:
+    patch:
+      consumes:
+      - application/json
+      description: The staff owner of an assignment dispatches a worker to physically
+        resolve the report on site. Sets the worker, route info and a location pin.
+      parameters:
+      - description: Assignment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Worker dispatch payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.AssignWorkerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Assignment'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Dispatch worker for an assignment (staff)
       tags:
       - Assignments
   /assignments/{id}/complete:
     patch:
       consumes:
       - application/json
-      description: Mark an assignment as completed (staff)
+      description: Mark an assignment as completed without going through the worker
+        upload flow (e.g. desk-resolved).
       parameters:
       - description: Assignment UUID
         in: path
@@ -579,14 +778,16 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: Complete assignment
+      summary: Complete assignment (staff)
       tags:
       - Assignments
   /auth/login:
     post:
       consumes:
       - application/json
-      description: Authenticate with email and password
+      description: Authenticate with phone + password (citizens) or email + password
+        (admin/staff/worker). Provide either `phone`, `email`, or a generic `identifier`
+        along with `password`.
       parameters:
       - description: Login credentials
         in: body
@@ -645,7 +846,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a citizen, admin, or staff account
+      description: Citizens register with phone + password (Pakistani format). Admin
+        / staff / worker accounts use email + password.
       parameters:
       - description: Registration payload
         in: body
@@ -817,6 +1019,170 @@ paths:
       summary: Update category
       tags:
       - Categories
+  /conversations:
+    get:
+      description: All chats the authenticated non-citizen user is part of, most recently
+        active first.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      security:
+      - BearerAuth: []
+      summary: List my conversations
+      tags:
+      - Messaging
+    post:
+      consumes:
+      - application/json
+      description: 'Returns the existing chat with the participant if one exists,
+        otherwise creates a new conversation. Allowed pairs: admin↔staff and staff↔worker.
+        Citizens are not permitted.'
+      parameters:
+      - description: Participant
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Conversation'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Open or fetch a 1:1 conversation
+      tags:
+      - Messaging
+  /conversations/{id}/messages:
+    get:
+      description: Returns messages newest-first. Use as the polling fallback when
+        websockets are unavailable.
+      parameters:
+      - description: Conversation UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 50
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Fetch message history (paginated)
+      tags:
+      - Messaging
+    post:
+      consumes:
+      - application/json
+      description: Persists the message and pushes it to any websocket subscribers
+        of the receiver in real time. The HTTP endpoint also doubles as the polling
+        fallback when websockets aren't available.
+      parameters:
+      - description: Conversation UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Message body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.SendMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Message'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Send a message in a conversation
+      tags:
+      - Messaging
+  /conversations/{id}/read:
+    patch:
+      parameters:
+      - description: Conversation UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Mark all messages in a conversation as read
+      tags:
+      - Messaging
   /departments:
     get:
       description: Get all departments
@@ -1343,7 +1709,7 @@ paths:
         in: query
         name: page_size
         type: integer
-      - description: Filter by role (citizen, admin, staff)
+      - description: Filter by role (citizen, admin, staff, worker)
         in: query
         name: role
         type: string
@@ -1361,7 +1727,9 @@ paths:
       - Users
   /users/{id}:
     delete:
-      description: Set user is_active to false (admin only)
+      description: Anonymises the user's email + name and marks the account inactive.
+        Linked records (reports, assignments, messages, analytics) remain queryable.
+        Admin only — to delete workers, staff use DELETE /workers/{id}.
       parameters:
       - description: User UUID
         in: path
@@ -1381,7 +1749,7 @@ paths:
             $ref: '#/definitions/utils.APIResponse'
       security:
       - BearerAuth: []
-      summary: Deactivate user (soft delete)
+      summary: Soft-delete a user
       tags:
       - Users
     get:
@@ -1413,6 +1781,219 @@ paths:
       summary: Get user by ID
       tags:
       - Users
+  /workers:
+    get:
+      description: Active workers, used by staff to dispatch reports.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      security:
+      - BearerAuth: []
+      summary: List workers (staff/admin)
+      tags:
+      - Worker
+  /workers/{id}:
+    delete:
+      description: Staff can remove a worker from their team. The worker is anonymised
+        (email scrubbed, phone nullified, name placeholdered) so historical assignments
+        & analytics still resolve their FK to this user. Allows the email to be reused
+        for re-registration.
+      parameters:
+      - description: Worker UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Soft-delete a worker (staff)
+      tags:
+      - Worker
+  /workers/me/assignments:
+    get:
+      description: Returns all reports dispatched to the authenticated worker, including
+        the report's location and any route info supplied by the dispatching staff.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: page_size
+        type: integer
+      - description: 'Filter: pending | in_progress | resolved'
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.PaginatedResponse'
+      security:
+      - BearerAuth: []
+      summary: List my assignments (worker)
+      tags:
+      - Worker
+  /workers/me/assignments/{id}:
+    get:
+      description: Fetches a single assignment that belongs to the authenticated worker.
+      parameters:
+      - description: Assignment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Assignment'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a worker assignment
+      tags:
+      - Worker
+  /workers/me/assignments/{id}/resolve:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Worker uploads a multipart/form-data image proving the issue is
+        fixed. The endpoint stores the image, attaches it to the report, transitions
+        the report status to `resolved`, and stamps the assignment as completed.
+      parameters:
+      - description: Assignment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Resolution image (jpg/png/webp/gif, max 10MB)
+        in: formData
+        name: image
+        required: true
+        type: file
+      - description: Optional notes from the worker
+        in: formData
+        name: remarks
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.Assignment'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload resolution image and mark resolved
+      tags:
+      - Worker
+  /workers/me/profile:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.User'
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get worker profile
+      tags:
+      - Worker
+    patch:
+      consumes:
+      - application/json
+      description: Worker self-updates their name / phone / email.
+      parameters:
+      - description: Profile fields
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateWorkerProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/models.User'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.APIResponse'
+      security:
+      - BearerAuth: []
+      summary: Update worker profile
+      tags:
+      - Worker
 securityDefinitions:
   BearerAuth:
     description: 'Type "Bearer" followed by a space and your JWT token. Example: **Bearer

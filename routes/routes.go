@@ -17,7 +17,6 @@ func Setup(r *gin.Engine) {
 		auth.POST("/login", handlers.Login)
 	}
 
-	// Public read-only
 	api.GET("/departments", handlers.ListDepartments)
 	api.GET("/departments/:id", handlers.GetDepartment)
 	api.GET("/categories", handlers.ListCategories)
@@ -29,15 +28,12 @@ func Setup(r *gin.Engine) {
 	protected := api.Group("")
 	protected.Use(middleware.AuthRequired())
 	{
-		// Auth
 		protected.GET("/auth/me", handlers.GetMe)
 
-		// Reports (any authenticated user)
 		protected.POST("/reports", handlers.CreateReport)
 		protected.GET("/reports", handlers.ListReports)
 		protected.GET("/reports/:id", handlers.GetReport)
 
-		// Notifications (own)
 		protected.GET("/notifications", handlers.ListMyNotifications)
 		protected.PATCH("/notifications/:id/read", handlers.MarkNotificationRead)
 		protected.PATCH("/notifications/read-all", handlers.MarkAllRead)
@@ -50,37 +46,69 @@ func Setup(r *gin.Engine) {
 		adminStaff.PATCH("/reports/:id/status", handlers.UpdateReportStatus)
 		adminStaff.GET("/reports/stats", handlers.GetReportStats)
 
-		// Assignments
-		adminStaff.GET("/assignments", handlers.ListAssignments)
+		// Assignments (also accessible by workers via dedicated worker routes below).
 		adminStaff.PATCH("/assignments/:id/complete", handlers.CompleteAssignment)
+		adminStaff.PATCH("/assignments/:id/assign-worker", handlers.AssignWorker)
+
+		// Workers directory (staff dispatches to workers).
+		adminStaff.GET("/workers", handlers.ListWorkers)
+		// Staff can soft-delete workers in their team.
+		adminStaff.DELETE("/workers/:id", handlers.DeleteWorker)
 	}
+
+	// ── Assignments listing for any non-citizen role ─
+	assignments := api.Group("")
+	assignments.Use(middleware.AuthRequired(), middleware.RoleRequired(models.RoleAdmin, models.RoleStaff, models.RoleWorker))
+	{
+		assignments.GET("/assignments", handlers.ListAssignments)
+	}
+
+	// ── Worker-only routes ──────────────────────────
+	workers := api.Group("/workers/me")
+	workers.Use(middleware.AuthRequired(), middleware.RoleRequired(models.RoleWorker))
+	{
+		workers.GET("/assignments", handlers.ListMyWorkerAssignments)
+		workers.GET("/assignments/:id", handlers.GetMyWorkerAssignment)
+		workers.POST("/assignments/:id/resolve", handlers.ResolveWorkerAssignment)
+		workers.GET("/profile", handlers.GetMyWorkerProfile)
+		workers.PATCH("/profile", handlers.UpdateMyWorkerProfile)
+	}
+
+	// ── In-app messaging (admin/staff/worker only) ──
+	messaging := api.Group("")
+	messaging.Use(middleware.AuthRequired(), middleware.RoleRequired(models.RoleAdmin, models.RoleStaff, models.RoleWorker))
+	{
+		messaging.POST("/conversations", handlers.CreateConversation)
+		messaging.GET("/conversations", handlers.ListConversations)
+		messaging.POST("/conversations/:id/messages", handlers.SendMessage)
+		messaging.GET("/conversations/:id/messages", handlers.ListMessages)
+		messaging.PATCH("/conversations/:id/read", handlers.MarkConversationRead)
+	}
+
+	// WebSocket gateway (auth performed inside the handler so query-token
+	// browsers can connect).
+	api.GET("/ws/messages", handlers.WSMessages)
 
 	// ── Admin only routes ───────────────────────────
 	admin := api.Group("")
 	admin.Use(middleware.AuthRequired(), middleware.RoleRequired(models.RoleAdmin))
 	{
-		// Users management
 		admin.GET("/users", handlers.ListUsers)
 		admin.GET("/users/:id", handlers.GetUser)
 		admin.DELETE("/users/:id", handlers.DeactivateUser)
 
-		// Departments
 		admin.POST("/departments", handlers.CreateDepartment)
 		admin.PUT("/departments/:id", handlers.UpdateDepartment)
 		admin.DELETE("/departments/:id", handlers.DeleteDepartment)
 
-		// Categories
 		admin.POST("/categories", handlers.CreateCategory)
 		admin.PUT("/categories/:id", handlers.UpdateCategory)
 		admin.DELETE("/categories/:id", handlers.DeleteCategory)
 
-		// Assignments
 		admin.POST("/assignments", handlers.CreateAssignment)
 
-		// Notifications (create)
 		admin.POST("/notifications", handlers.CreateNotification)
 
-		// Safety Alerts
 		admin.POST("/safety-alerts", handlers.CreateSafetyAlert)
 		admin.DELETE("/safety-alerts/:id", handlers.DeleteSafetyAlert)
 	}

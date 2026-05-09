@@ -25,7 +25,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get paginated assignments (staff sees own, admin sees all)",
+                "description": "Get paginated assignments. Staff sees own, worker sees own dispatched, admin sees all.",
                 "produces": [
                     "application/json"
                 ],
@@ -64,7 +64,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create an assignment for a report (admin only)",
+                "description": "Creates the staff-level ownership of a report. Optionally a worker can be dispatched immediately by including ` + "`" + `worker_id` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -74,7 +74,7 @@ const docTemplate = `{
                 "tags": [
                     "Assignments"
                 ],
-                "summary": "Assign report to staff",
+                "summary": "Assign report to staff (admin)",
                 "parameters": [
                     {
                         "description": "Assignment data",
@@ -114,14 +114,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/assignments/{id}/complete": {
+        "/assignments/{id}/assign-worker": {
             "patch": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mark an assignment as completed (staff)",
+                "description": "The staff owner of an assignment dispatches a worker to physically resolve the report on site. Sets the worker, route info and a location pin.",
                 "consumes": [
                     "application/json"
                 ],
@@ -131,7 +131,77 @@ const docTemplate = `{
                 "tags": [
                     "Assignments"
                 ],
-                "summary": "Complete assignment",
+                "summary": "Dispatch worker for an assignment (staff)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Worker dispatch payload",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.AssignWorkerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.Assignment"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/assignments/{id}/complete": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mark an assignment as completed without going through the worker upload flow (e.g. desk-resolved).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assignments"
+                ],
+                "summary": "Complete assignment (staff)",
                 "parameters": [
                     {
                         "type": "string",
@@ -180,7 +250,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Authenticate with email and password",
+                "description": "Authenticate with phone + password (citizens) or email + password (admin/staff/worker). Provide either ` + "`" + `phone` + "`" + `, ` + "`" + `email` + "`" + `, or a generic ` + "`" + `identifier` + "`" + ` along with ` + "`" + `password` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -281,7 +351,7 @@ const docTemplate = `{
         },
         "/auth/register": {
             "post": {
-                "description": "Create a citizen, admin, or staff account",
+                "description": "Citizens register with phone + password (Pakistani format). Admin / staff / worker accounts use email + password.",
                 "consumes": [
                     "application/json"
                 ],
@@ -567,6 +637,263 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "All chats the authenticated non-citizen user is part of, most recently active first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Messaging"
+                ],
+                "summary": "List my conversations",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.PaginatedResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the existing chat with the participant if one exists, otherwise creates a new conversation. Allowed pairs: admin↔staff and staff↔worker. Citizens are not permitted.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Messaging"
+                ],
+                "summary": "Open or fetch a 1:1 conversation",
+                "parameters": [
+                    {
+                        "description": "Participant",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateConversationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.Conversation"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{id}/messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns messages newest-first. Use as the polling fallback when websockets are unavailable.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Messaging"
+                ],
+                "summary": "Fetch message history (paginated)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Items per page",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.PaginatedResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Persists the message and pushes it to any websocket subscribers of the receiver in real time. The HTTP endpoint also doubles as the polling fallback when websockets aren't available.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Messaging"
+                ],
+                "summary": "Send a message in a conversation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Message body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.SendMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.Message"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{id}/read": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Messaging"
+                ],
+                "summary": "Mark all messages in a conversation as read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Conversation UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/utils.APIResponse"
                         }
@@ -1453,7 +1780,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Filter by role (citizen, admin, staff)",
+                        "description": "Filter by role (citizen, admin, staff, worker)",
                         "name": "role",
                         "in": "query"
                     }
@@ -1525,14 +1852,14 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Set user is_active to false (admin only)",
+                "description": "Anonymises the user's email + name and marks the account inactive. Linked records (reports, assignments, messages, analytics) remain queryable. Admin only — to delete workers, staff use DELETE /workers/{id}.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Users"
                 ],
-                "summary": "Deactivate user (soft delete)",
+                "summary": "Soft-delete a user",
                 "parameters": [
                     {
                         "type": "string",
@@ -1557,9 +1884,372 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/workers": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Active workers, used by staff to dispatch reports.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Worker"
+                ],
+                "summary": "List workers (staff/admin)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.PaginatedResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workers/me/assignments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all reports dispatched to the authenticated worker, including the report's location and any route info supplied by the dispatching staff.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Worker"
+                ],
+                "summary": "List my assignments (worker)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter: pending | in_progress | resolved",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.PaginatedResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workers/me/assignments/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fetches a single assignment that belongs to the authenticated worker.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Worker"
+                ],
+                "summary": "Get a worker assignment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.Assignment"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workers/me/assignments/{id}/resolve": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Worker uploads a multipart/form-data image proving the issue is fixed. The endpoint stores the image, attaches it to the report, transitions the report status to ` + "`" + `resolved` + "`" + `, and stamps the assignment as completed.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Worker"
+                ],
+                "summary": "Upload resolution image and mark resolved",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Assignment UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "Resolution image (jpg/png/webp/gif, max 10MB)",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Optional notes from the worker",
+                        "name": "remarks",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.Assignment"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workers/me/profile": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Worker"
+                ],
+                "summary": "Get worker profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.User"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Worker self-updates their name / phone / email.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Worker"
+                ],
+                "summary": "Update worker profile",
+                "parameters": [
+                    {
+                        "description": "Profile fields",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateWorkerProfileRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/models.User"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workers/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Staff can remove a worker from their team. The worker is anonymised (email scrubbed, phone nullified, name placeholdered) so historical assignments \u0026 analytics still resolve their FK to this user. Allows the email to be reused for re-registration.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Worker"
+                ],
+                "summary": "Soft-delete a worker (staff)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Worker UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/utils.APIResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "handlers.AssignWorkerRequest": {
+            "type": "object",
+            "required": [
+                "worker_id"
+            ],
+            "properties": {
+                "remarks": {
+                    "type": "string"
+                },
+                "route_info": {
+                    "type": "string",
+                    "example": "Use the back entrance off Margalla Rd"
+                },
+                "worker_id": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.AuthResponse": {
             "type": "object",
             "properties": {
@@ -1594,7 +2284,14 @@ const docTemplate = `{
                 "report_id": {
                     "type": "string"
                 },
+                "route_info": {
+                    "type": "string",
+                    "example": "Approach from Street 7, look for the blue gate"
+                },
                 "staff_id": {
+                    "type": "string"
+                },
+                "worker_id": {
                     "type": "string"
                 }
             }
@@ -1615,6 +2312,17 @@ const docTemplate = `{
                 "name": {
                     "type": "string",
                     "example": "Broken Street Light"
+                }
+            }
+        },
+        "handlers.CreateConversationRequest": {
+            "type": "object",
+            "required": [
+                "participant_id"
+            ],
+            "properties": {
+                "participant_id": {
+                    "type": "string"
                 }
             }
         },
@@ -1734,29 +2442,38 @@ const docTemplate = `{
         "handlers.LoginRequest": {
             "type": "object",
             "required": [
-                "email",
                 "password"
             ],
             "properties": {
                 "email": {
                     "type": "string",
-                    "example": "ali@example.com"
+                    "example": "admin@saafislamabad.pk"
+                },
+                "identifier": {
+                    "type": "string",
+                    "example": "+923001234567"
                 },
                 "password": {
                     "type": "string",
                     "example": "secret123"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+923001234567"
                 }
             }
         },
         "handlers.RegisterRequest": {
             "type": "object",
             "required": [
-                "email",
                 "full_name",
                 "password",
                 "role"
             ],
             "properties": {
+                "department_id": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string",
                     "example": "ali@example.com"
@@ -1779,9 +2496,24 @@ const docTemplate = `{
                     "enum": [
                         "citizen",
                         "admin",
-                        "staff"
+                        "staff",
+                        "worker"
                     ],
                     "example": "citizen"
+                }
+            }
+        },
+        "handlers.SendMessageRequest": {
+            "type": "object",
+            "required": [
+                "content"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "example": "Heading to site now."
                 }
             }
         },
@@ -1838,6 +2570,23 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.UpdateWorkerProfileRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "ahmed@saafislamabad.pk"
+                },
+                "full_name": {
+                    "type": "string",
+                    "example": "Ahmed Raza"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+923001234567"
+                }
+            }
+        },
         "handlers.UserSummary": {
             "type": "object",
             "properties": {
@@ -1848,6 +2597,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "phone": {
                     "type": "string"
                 },
                 "role": {
@@ -1870,6 +2622,9 @@ const docTemplate = `{
                 "completed_at": {
                     "type": "string"
                 },
+                "dispatched_at": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -1882,10 +2637,83 @@ const docTemplate = `{
                 "report_id": {
                     "type": "string"
                 },
+                "resolution_image_url": {
+                    "description": "URL of the resolution image uploaded by the worker once the issue\nis fixed on-site. Mirrored onto the report's image set as well.",
+                    "type": "string"
+                },
+                "route_info": {
+                    "description": "Route / location info delivered to the worker. Free-form so staff can\ndrop a Google Maps link, written directions, or a meeting point.",
+                    "type": "string"
+                },
+                "route_latitude": {
+                    "description": "Latitude/Longitude duplicated from Report at dispatch time so the\nworker has an authoritative pin even if the report is later edited.",
+                    "type": "number"
+                },
+                "route_longitude": {
+                    "type": "number"
+                },
                 "staff": {
                     "$ref": "#/definitions/models.User"
                 },
                 "staff_id": {
+                    "type": "string"
+                },
+                "worker": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "worker_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Conversation": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "$ref": "#/definitions/models.MessageChannel"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_message_at": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Message"
+                    }
+                },
+                "participants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.ConversationParticipant"
+                    }
+                }
+            }
+        },
+        "models.ConversationParticipant": {
+            "type": "object",
+            "properties": {
+                "conversation_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "joined_at": {
+                    "type": "string"
+                },
+                "last_read_at": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "user_id": {
                     "type": "string"
                 }
             }
@@ -1932,6 +2760,49 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "models.Message": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_read": {
+                    "type": "boolean"
+                },
+                "read_at": {
+                    "type": "string"
+                },
+                "receiver_id": {
+                    "type": "string"
+                },
+                "sender": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "sender_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MessageChannel": {
+            "type": "string",
+            "enum": [
+                "admin_staff",
+                "staff_worker"
+            ],
+            "x-enum-varnames": [
+                "ChannelAdminStaff",
+                "ChannelStaffWorker"
+            ]
         },
         "models.Notification": {
             "type": "object",
@@ -2080,7 +2951,13 @@ const docTemplate = `{
                 "is_primary": {
                     "type": "boolean"
                 },
+                "is_resolution": {
+                    "type": "boolean"
+                },
                 "report_id": {
+                    "type": "string"
+                },
+                "uploaded_by": {
                     "type": "string"
                 }
             }
@@ -2138,12 +3015,14 @@ const docTemplate = `{
             "enum": [
                 "citizen",
                 "admin",
-                "staff"
+                "staff",
+                "worker"
             ],
             "x-enum-varnames": [
                 "RoleCitizen",
                 "RoleAdmin",
-                "RoleStaff"
+                "RoleStaff",
+                "RoleWorker"
             ]
         },
         "models.SafetyAlert": {
@@ -2186,6 +3065,15 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "created_at": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "department": {
+                    "$ref": "#/definitions/models.Department"
+                },
+                "department_id": {
                     "type": "string"
                 },
                 "email": {

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -60,6 +61,14 @@ func main() {
 	r := gin.Default()
 
 	r.Use(middleware.CORS())
+
+	// Ensure uploads directory exists and expose it as a static endpoint so
+	// resolution images uploaded by workers are accessible to the dashboard
+	// and citizen apps.
+	if err := os.MkdirAll("uploads", 0o755); err != nil {
+		log.Printf("warning: could not create uploads dir: %v", err)
+	}
+	r.Static("/uploads", "./uploads")
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

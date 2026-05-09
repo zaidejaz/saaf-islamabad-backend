@@ -1,6 +1,7 @@
 package database
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/zaidejaz/saaf-islamabad-backend/config"
@@ -47,13 +48,44 @@ func Connect(cfg *config.Config) {
 		&models.UserPoints{},
 		&models.Badge{},
 		&models.UserBadge{},
+		&models.Conversation{},
+		&models.ConversationParticipant{},
+		&models.Message{},
 	)
 	if err != nil {
 		log.Fatalf("auto-migration failed: %v", err)
 	}
+
+	if err := applySchemaPatches(); err != nil {
+		log.Fatalf("schema patch failed: %v", err)
+	}
+
 	log.Println("database migrated")
 
 	seedSuperAdmin(cfg)
+}
+
+// applySchemaPatches runs idempotent ALTERs that GORM's AutoMigrate doesn't
+// reliably emit on its own — namely loosening the previous NOT NULL on
+// users.email so soft-delete can null it out, and ensuring users.phone is
+// uniquely indexed only when populated.
+func applySchemaPatches() error {
+	statements := []string{
+		`ALTER TABLE users ALTER COLUMN email DROP NOT NULL`,
+		// Drop legacy unique index on phone if it exists, then re-create one
+		// that's null-safe (Postgres treats NULLs as distinct, so this is
+		// effectively partial unique behaviour — but we make it explicit).
+		`DROP INDEX IF EXISTS idx_users_phone`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users (phone) WHERE phone IS NOT NULL`,
+		`DROP INDEX IF EXISTS idx_users_email`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email) WHERE email IS NOT NULL`,
+	}
+	for _, sql := range statements {
+		if err := DB.Exec(sql).Error; err != nil {
+			return fmt.Errorf("apply %q: %w", sql, err)
+		}
+	}
+	return nil
 }
 
 func seedSuperAdmin(cfg *config.Config) {
@@ -73,9 +105,10 @@ func seedSuperAdmin(cfg *config.Config) {
 		log.Fatalf("failed to hash super admin password: %v", err)
 	}
 
+	emailLower := cfg.SuperAdminEmail
 	admin := models.User{
 		FullName:     cfg.SuperAdminName,
-		Email:        cfg.SuperAdminEmail,
+		Email:        &emailLower,
 		PasswordHash: string(hash),
 		Role:         models.RoleAdmin,
 		IsVerified:   true,

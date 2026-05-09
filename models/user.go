@@ -13,17 +13,29 @@ const (
 	RoleCitizen Role = "citizen"
 	RoleAdmin   Role = "admin"
 	RoleStaff   Role = "staff"
+	RoleWorker  Role = "worker"
 )
 
+// User represents any account on the platform: citizen, admin, staff, or worker.
+//
+// Email and Phone are both nullable so that:
+//   - Citizens can register with phone-only.
+//   - Soft-deleted accounts can have their email/phone scrubbed without
+//     destroying historical references (assignments, reports, messages).
+//
+// Phone is unique only when populated, allowing nullification on soft-delete.
 type User struct {
 	ID           uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
 	FullName     string     `gorm:"size:100;not null" json:"full_name"`
-	Email        string     `gorm:"size:150;uniqueIndex;not null" json:"email"`
-	Phone        string     `gorm:"size:20" json:"phone,omitempty"`
+	Email        *string    `gorm:"size:150;uniqueIndex" json:"email,omitempty"`
+	Phone        *string    `gorm:"size:20;uniqueIndex" json:"phone,omitempty"`
 	PasswordHash string     `gorm:"type:text;not null" json:"-"`
 	Role         Role       `gorm:"size:20;not null;default:'citizen'" json:"role"`
+	DepartmentID *uuid.UUID `gorm:"type:uuid" json:"department_id,omitempty"`
+	Department   *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
 	IsVerified   bool       `gorm:"default:false" json:"is_verified"`
 	IsActive     bool       `gorm:"default:true" json:"is_active"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
 }

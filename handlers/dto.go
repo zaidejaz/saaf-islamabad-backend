@@ -4,17 +4,26 @@ import "github.com/google/uuid"
 
 // ── Auth ────────────────────────────────────────────
 
+// RegisterRequest is the payload for POST /auth/register.
+//
+// Citizens must register with phone + password (Pakistani format).
+// Admin / Staff / Worker accounts use email + password.
 type RegisterRequest struct {
 	FullName string `json:"full_name" binding:"required" example:"Ali Khan"`
-	Email    string `json:"email" binding:"required,email" example:"ali@example.com"`
-	Phone    string `json:"phone" example:"+923001234567"`
+	Email    string `json:"email,omitempty" example:"ali@example.com"`
+	Phone    string `json:"phone,omitempty" example:"+923001234567"`
 	Password string `json:"password" binding:"required,min=6" example:"secret123"`
-	Role     string `json:"role" binding:"required,oneof=citizen admin staff" example:"citizen"`
+	Role     string `json:"role" binding:"required,oneof=citizen admin staff worker" example:"citizen"`
+	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
 }
 
+// LoginRequest accepts either a phone number or an email address. Citizens
+// sign in with phone; staff / admin / worker accounts sign in with email.
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email" example:"ali@example.com"`
-	Password string `json:"password" binding:"required" example:"secret123"`
+	Identifier string `json:"identifier,omitempty" example:"+923001234567"`
+	Email      string `json:"email,omitempty" example:"admin@saafislamabad.pk"`
+	Phone      string `json:"phone,omitempty" example:"+923001234567"`
+	Password   string `json:"password" binding:"required" example:"secret123"`
 }
 
 type AuthResponse struct {
@@ -25,7 +34,8 @@ type AuthResponse struct {
 type UserSummary struct {
 	ID       uuid.UUID `json:"id"`
 	FullName string    `json:"full_name"`
-	Email    string    `json:"email"`
+	Email    string    `json:"email,omitempty"`
+	Phone    string    `json:"phone,omitempty"`
 	Role     string    `json:"role"`
 }
 
@@ -76,24 +86,44 @@ type UpdateReportStatusRequest struct {
 
 // ── Assignment ──────────────────────────────────────
 
+// CreateAssignmentRequest is used by admin (assign report -> staff) and
+// optionally extended by staff to dispatch the report to a specific worker.
 type CreateAssignmentRequest struct {
-	ReportID uuid.UUID `json:"report_id" binding:"required"`
-	StaffID  uuid.UUID `json:"staff_id" binding:"required"`
-	Remarks  string    `json:"remarks" example:"Please resolve within 48 hours"`
+	ReportID  uuid.UUID  `json:"report_id" binding:"required"`
+	StaffID   uuid.UUID  `json:"staff_id" binding:"required"`
+	WorkerID  *uuid.UUID `json:"worker_id,omitempty"`
+	RouteInfo string     `json:"route_info,omitempty" example:"Approach from Street 7, look for the blue gate"`
+	Remarks   string     `json:"remarks" example:"Please resolve within 48 hours"`
 }
 
 type CompleteAssignmentRequest struct {
 	Remarks string `json:"remarks" example:"Resolved on site"`
 }
 
+// AssignWorkerRequest is sent by staff to dispatch a report (already
+// assigned to them) to a field worker.
+type AssignWorkerRequest struct {
+	WorkerID  uuid.UUID `json:"worker_id" binding:"required"`
+	RouteInfo string    `json:"route_info,omitempty" example:"Use the back entrance off Margalla Rd"`
+	Remarks   string    `json:"remarks,omitempty"`
+}
+
+// ── Worker ──────────────────────────────────────────
+
+type UpdateWorkerProfileRequest struct {
+	FullName *string `json:"full_name,omitempty" example:"Ahmed Raza"`
+	Phone    *string `json:"phone,omitempty" example:"+923001234567"`
+	Email    *string `json:"email,omitempty" example:"ahmed@saafislamabad.pk"`
+}
+
 // ── Notification ────────────────────────────────────
 
 type CreateNotificationRequest struct {
-	UserID   uuid.UUID `json:"user_id" binding:"required"`
+	UserID   uuid.UUID  `json:"user_id" binding:"required"`
 	ReportID *uuid.UUID `json:"report_id"`
-	Title    string    `json:"title" binding:"required" example:"Status Update"`
-	Message  string    `json:"message" binding:"required" example:"Your report is now in review"`
-	Type     string    `json:"type" binding:"required,oneof=status_update safety_alert nearby_issue" example:"status_update"`
+	Title    string     `json:"title" binding:"required" example:"Status Update"`
+	Message  string     `json:"message" binding:"required" example:"Your report is now in review"`
+	Type     string     `json:"type" binding:"required,oneof=status_update safety_alert nearby_issue" example:"status_update"`
 }
 
 // ── Safety Alert ────────────────────────────────────
@@ -102,4 +132,16 @@ type CreateSafetyAlertRequest struct {
 	ReportID  uuid.UUID `json:"report_id" binding:"required"`
 	RadiusKM  float64   `json:"radius_km" binding:"required,gt=0" example:"2.5"`
 	ExpiresIn int       `json:"expires_in_hours" binding:"required,gt=0" example:"24"`
+}
+
+// ── Messaging ───────────────────────────────────────
+
+// CreateConversationRequest opens (or returns the existing) 1:1 chat with
+// another user. The server validates that the channel pair is allowed.
+type CreateConversationRequest struct {
+	ParticipantID uuid.UUID `json:"participant_id" binding:"required"`
+}
+
+type SendMessageRequest struct {
+	Content string `json:"content" binding:"required,min=1,max=5000" example:"Heading to site now."`
 }

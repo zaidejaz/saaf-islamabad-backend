@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +14,12 @@ import (
 	"github.com/zaidejaz/saaf-islamabad-backend/models"
 	"github.com/zaidejaz/saaf-islamabad-backend/utils"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // Register godoc
 // @Summary      Register a new user
-// @Description  Create a citizen, admin, or staff account
+// @Description  Citizens register with phone + password (Pakistani format). Admin / staff / worker accounts use email + password.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -31,9 +35,75 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	var existing models.User
-	if err := database.DB.Where("email = ?", req.Email).First(&existing).Error; err == nil {
-		utils.Error(c, http.StatusConflict, "email already registered")
+	role := models.Role(req.Role)
+
+	user := models.User{
+		FullName:     strings.TrimSpace(req.FullName),
+		Role:         role,
+		IsVerified:   false,
+		IsActive:     true,
+		DepartmentID: req.DepartmentID,
+	}
+
+	switch role {
+	case models.RoleCitizen:
+		if req.Phone == "" {
+			utils.BadRequest(c, "phone is required for citizen accounts")
+			return
+		}
+		phone, err := utils.NormalizePKPhone(req.Phone)
+		if err != nil {
+			utils.BadRequest(c, err.Error())
+			return
+		}
+		if exists, err := userExistsByPhone(phone); err != nil {
+			utils.InternalError(c, "lookup failed")
+			return
+		} else if exists {
+			utils.Error(c, http.StatusConflict, "phone already registered")
+			return
+		}
+		user.Phone = &phone
+		// Citizens may optionally still provide email.
+		if email := strings.TrimSpace(req.Email); email != "" {
+			if _, err := mail.ParseAddress(email); err != nil {
+				utils.BadRequest(c, "invalid email format")
+				return
+			}
+			emailLower := strings.ToLower(email)
+			user.Email = &emailLower
+		}
+
+	case models.RoleAdmin, models.RoleStaff, models.RoleWorker:
+		if req.Email == "" {
+			utils.BadRequest(c, "email is required for admin/staff/worker accounts")
+			return
+		}
+		if _, err := mail.ParseAddress(req.Email); err != nil {
+			utils.BadRequest(c, "invalid email format")
+			return
+		}
+		emailLower := strings.ToLower(strings.TrimSpace(req.Email))
+		if exists, err := userExistsByEmail(emailLower); err != nil {
+			utils.InternalError(c, "lookup failed")
+			return
+		} else if exists {
+			utils.Error(c, http.StatusConflict, "email already registered")
+			return
+		}
+		user.Email = &emailLower
+
+		if req.Phone != "" {
+			phone, err := utils.NormalizePKPhone(req.Phone)
+			if err != nil {
+				utils.BadRequest(c, err.Error())
+				return
+			}
+			user.Phone = &phone
+		}
+
+	default:
+		utils.BadRequest(c, "invalid role")
 		return
 	}
 
@@ -42,16 +112,7 @@ func Register(c *gin.Context) {
 		utils.InternalError(c, "failed to hash password")
 		return
 	}
-
-	user := models.User{
-		FullName:     req.FullName,
-		Email:        req.Email,
-		Phone:        req.Phone,
-		PasswordHash: string(hash),
-		Role:         models.Role(req.Role),
-		IsVerified:   false,
-		IsActive:     true,
-	}
+	user.PasswordHash = string(hash)
 
 	if err := database.DB.Create(&user).Error; err != nil {
 		utils.InternalError(c, "failed to create user")
@@ -72,7 +133,7 @@ func Register(c *gin.Context) {
 
 // Login godoc
 // @Summary      Login
-// @Description  Authenticate with email and password
+// @Description  Authenticate with phone + password (citizens) or email + password (admin/staff/worker). Provide either `phone`, `email`, or a generic `identifier` along with `password`.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -88,10 +149,40 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	var user models.User
-	if err := database.DB.Where("email = ? AND is_active = true", req.Email).First(&user).Error; err != nil {
-		utils.Unauthorized(c, "invalid credentials")
+	identifier := strings.TrimSpace(req.Identifier)
+	if identifier == "" {
+		identifier = strings.TrimSpace(req.Phone)
+	}
+	if identifier == "" {
+		identifier = strings.TrimSpace(req.Email)
+	}
+	if identifier == "" || req.Password == "" {
+		utils.BadRequest(c, "identifier (phone/email) and password are required")
 		return
+	}
+
+	var user models.User
+	q := database.DB.Where("is_active = true")
+
+	if _, err := mail.ParseAddress(identifier); err == nil {
+		// Looks like an email
+		emailLower := strings.ToLower(identifier)
+		err = q.Where("email = ?", emailLower).First(&user).Error
+		if err != nil {
+			utils.Unauthorized(c, "invalid credentials")
+			return
+		}
+	} else {
+		// Treat as phone number
+		phone, err := utils.NormalizePKPhone(identifier)
+		if err != nil {
+			utils.Unauthorized(c, "invalid credentials")
+			return
+		}
+		if err := q.Where("phone = ?", phone).First(&user).Error; err != nil {
+			utils.Unauthorized(c, "invalid credentials")
+			return
+		}
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
@@ -123,7 +214,7 @@ func Login(c *gin.Context) {
 func GetMe(c *gin.Context) {
 	userID := c.MustGet("user_id")
 	var user models.User
-	if err := database.DB.First(&user, "id = ?", userID).Error; err != nil {
+	if err := database.DB.Preload("Department").First(&user, "id = ?", userID).Error; err != nil {
 		utils.NotFound(c, "user not found")
 		return
 	}
@@ -143,10 +234,40 @@ func generateToken(user models.User) (string, error) {
 }
 
 func toUserSummary(u models.User) UserSummary {
-	return UserSummary{
+	s := UserSummary{
 		ID:       u.ID,
 		FullName: u.FullName,
-		Email:    u.Email,
 		Role:     string(u.Role),
 	}
+	if u.Email != nil {
+		s.Email = *u.Email
+	}
+	if u.Phone != nil {
+		s.Phone = *u.Phone
+	}
+	return s
+}
+
+func userExistsByPhone(phone string) (bool, error) {
+	var u models.User
+	err := database.DB.Where("phone = ?", phone).First(&u).Error
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return false, err
+}
+
+func userExistsByEmail(email string) (bool, error) {
+	var u models.User
+	err := database.DB.Where("email = ?", email).First(&u).Error
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	return false, err
 }
