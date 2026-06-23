@@ -15,6 +15,7 @@ import (
 	"github.com/zaidejaz/saaf-islamabad-backend/config"
 	"github.com/zaidejaz/saaf-islamabad-backend/database"
 	_ "github.com/zaidejaz/saaf-islamabad-backend/docs"
+	"github.com/zaidejaz/saaf-islamabad-backend/handlers"
 	"github.com/zaidejaz/saaf-islamabad-backend/middleware"
 	"github.com/zaidejaz/saaf-islamabad-backend/routes"
 )
@@ -41,6 +42,7 @@ func main() {
 	middleware.InitJWT(cfg.JWTSecret)
 
 	gin.SetMode(cfg.GinMode)
+	handlers.InitOTP(cfg.GinMode == gin.DebugMode)
 
 	database.Connect(cfg)
 

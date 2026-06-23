@@ -15,6 +15,7 @@ func Setup(r *gin.Engine) {
 	{
 		auth.POST("/register", handlers.Register)
 		auth.POST("/login", handlers.Login)
+		auth.POST("/otp/send", handlers.SendOTP)
 	}
 
 	api.GET("/departments", handlers.ListDepartments)

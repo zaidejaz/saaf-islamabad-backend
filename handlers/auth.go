@@ -12,6 +12,7 @@ import (
 	"github.com/zaidejaz/saaf-islamabad-backend/database"
 	"github.com/zaidejaz/saaf-islamabad-backend/middleware"
 	"github.com/zaidejaz/saaf-islamabad-backend/models"
+	"github.com/zaidejaz/saaf-islamabad-backend/services/otp"
 	"github.com/zaidejaz/saaf-islamabad-backend/utils"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -40,7 +41,7 @@ func Register(c *gin.Context) {
 	user := models.User{
 		FullName:     strings.TrimSpace(req.FullName),
 		Role:         role,
-		IsVerified:   false,
+		IsVerified:   role == models.RoleCitizen,
 		IsActive:     true,
 		DepartmentID: req.DepartmentID,
 	}
@@ -54,6 +55,14 @@ func Register(c *gin.Context) {
 		phone, err := utils.NormalizePKPhone(req.Phone)
 		if err != nil {
 			utils.BadRequest(c, err.Error())
+			return
+		}
+		if strings.TrimSpace(req.OTP) == "" {
+			utils.BadRequest(c, "OTP is required for citizen registration")
+			return
+		}
+		if !otpStore.Verify(phone, otp.PurposeRegister, strings.TrimSpace(req.OTP)) {
+			utils.BadRequest(c, "invalid or expired OTP")
 			return
 		}
 		if exists, err := userExistsByPhone(phone); err != nil {

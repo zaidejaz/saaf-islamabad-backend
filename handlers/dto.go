@@ -14,7 +14,14 @@ type RegisterRequest struct {
 	Phone    string `json:"phone,omitempty" example:"+923001234567"`
 	Password string `json:"password" binding:"required,min=6" example:"secret123"`
 	Role     string `json:"role" binding:"required,oneof=citizen admin staff worker" example:"citizen"`
+	OTP      string `json:"otp,omitempty" example:"123456"`
 	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
+}
+
+// SendOTPRequest is the payload for POST /auth/otp/send.
+type SendOTPRequest struct {
+	Phone   string `json:"phone" binding:"required" example:"+923001234567"`
+	Purpose string `json:"purpose,omitempty" example:"register"`
 }
 
 // LoginRequest accepts either a phone number or an email address. Citizens
