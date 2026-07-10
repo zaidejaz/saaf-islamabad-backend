@@ -10,7 +10,7 @@ import (
 func Setup(r *gin.Engine) {
 	api := r.Group("/api/v1")
 
-	// ── Public routes ───────────────────────────────
+	// ── Public routess ───────────────────────────────
 	auth := api.Group("/auth")
 	{
 		auth.POST("/register", handlers.Register)
