@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,8 +14,6 @@ import (
 	"github.com/zaidejaz/saaf-islamabad-backend/utils"
 	"gorm.io/gorm"
 )
-
-const uploadsDir = "./uploads"
 
 // allowed image content types for resolution photos.
 var allowedImageMIME = map[string]string{
@@ -128,22 +124,10 @@ func ResolveWorkerAssignment(c *gin.Context) {
 		return
 	}
 
-	contentType := fileHeader.Header.Get("Content-Type")
-	ext, ok := allowedImageMIME[strings.ToLower(contentType)]
-	if !ok {
-		// fall back to file extension
-		fallbackExt := strings.ToLower(filepath.Ext(fileHeader.Filename))
-		switch fallbackExt {
-		case ".jpg", ".jpeg":
-			ext = ".jpg"
-		case ".png":
-			ext = ".png"
-		case ".webp":
-			ext = ".webp"
-		case ".gif":
-			ext = ".gif"
-		default:
-			utils.BadRequest(c, "unsupported image type; allowed: jpg, png, webp, gif")
+	contentType := strings.ToLower(fileHeader.Header.Get("Content-Type"))
+	if _, ok := allowedImageMIME[contentType]; !ok {
+		if _, _, err := parseImageUpload(fileHeader); err != nil {
+			utils.BadRequest(c, err.Error())
 			return
 		}
 	}
@@ -158,19 +142,11 @@ func ResolveWorkerAssignment(c *gin.Context) {
 		return
 	}
 
-	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
-		utils.InternalError(c, "failed to prepare upload directory")
+	filename := fmt.Sprintf("resolutions/resolution_%s_%s", assignment.ID.String(), uuid.NewString())
+	publicURL, err := saveUploadedImage(c, fileHeader, filename)
+	if badImageUpload(c, err) {
 		return
 	}
-
-	filename := fmt.Sprintf("resolution_%s_%s%s", assignment.ID.String(), uuid.NewString(), ext)
-	dst := filepath.Join(uploadsDir, filename)
-	if err := c.SaveUploadedFile(fileHeader, dst); err != nil {
-		utils.InternalError(c, "failed to save uploaded file")
-		return
-	}
-
-	publicURL := "/uploads/" + filename
 	now := time.Now()
 	remarks := strings.TrimSpace(c.PostForm("remarks"))
 

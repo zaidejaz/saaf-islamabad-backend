@@ -19,6 +19,7 @@ import (
 	"github.com/zaidejaz/saaf-islamabad-backend/middleware"
 	"github.com/zaidejaz/saaf-islamabad-backend/routes"
 	"github.com/zaidejaz/saaf-islamabad-backend/services/ai"
+	"github.com/zaidejaz/saaf-islamabad-backend/services/storage"
 )
 
 // @title          Saaf Islamabad API
@@ -44,6 +45,13 @@ func main() {
 
 	gin.SetMode(cfg.GinMode)
 	handlers.InitOTP(cfg)
+
+	uploader, err := storage.New(cfg)
+	if err != nil {
+		log.Fatalf("image storage init failed: %v", err)
+	}
+	handlers.InitStorage(uploader)
+	log.Printf("image storage ready: driver=%s", uploader.Driver())
 
 	database.Connect(cfg)
 
@@ -72,13 +80,17 @@ func main() {
 
 	r.Use(middleware.CORS())
 
-	// Ensure uploads directory exists and expose it as a static endpoint so
-	// resolution images uploaded by workers are accessible to the dashboard
-	// and citizen apps.
-	if err := os.MkdirAll("uploads", 0o755); err != nil {
-		log.Printf("warning: could not create uploads dir: %v", err)
+	// Local uploads are served statically; R2 objects are served from the public bucket URL.
+	if uploader.Driver() == storage.DriverLocal {
+		uploadsDir := cfg.LocalUploadsDir
+		if uploadsDir == "" {
+			uploadsDir = "./uploads"
+		}
+		if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
+			log.Printf("warning: could not create uploads dir: %v", err)
+		}
+		r.Static("/uploads", uploadsDir)
 	}
-	r.Static("/uploads", "./uploads")
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 

@@ -2,9 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -13,7 +10,7 @@ import (
 
 // UploadIssueImage godoc
 // @Summary      Upload issue photo
-// @Description  Citizen uploads a civic-issue photo. Returns a public /uploads/ URL for use with /classify and /reports.
+// @Description  Citizen uploads a civic-issue photo. Returns a public URL for use with /classify and /reports.
 // @Tags         Uploads
 // @Accept       multipart/form-data
 // @Produce      json
@@ -28,44 +25,14 @@ func UploadIssueImage(c *gin.Context) {
 		utils.BadRequest(c, "image file is required (form field: image)")
 		return
 	}
-	if fileHeader.Size > 10*1024*1024 {
-		utils.BadRequest(c, "image must be 10MB or smaller")
-		return
-	}
-
-	contentType := fileHeader.Header.Get("Content-Type")
-	ext, ok := allowedImageMIME[strings.ToLower(contentType)]
-	if !ok {
-		fallbackExt := strings.ToLower(filepath.Ext(fileHeader.Filename))
-		switch fallbackExt {
-		case ".jpg", ".jpeg":
-			ext = ".jpg"
-		case ".png":
-			ext = ".png"
-		case ".webp":
-			ext = ".webp"
-		case ".gif":
-			ext = ".gif"
-		default:
-			utils.BadRequest(c, "unsupported image type; allowed: jpg, png, webp, gif")
-			return
-		}
-	}
-
-	if err := os.MkdirAll(uploadsDir, 0o755); err != nil {
-		utils.InternalError(c, "failed to prepare upload directory")
-		return
-	}
 
 	userID := c.MustGet("user_id").(uuid.UUID)
-	filename := fmt.Sprintf("issue_%s_%s%s", userID.String(), uuid.NewString(), ext)
-	dst := filepath.Join(uploadsDir, filename)
-	if err := c.SaveUploadedFile(fileHeader, dst); err != nil {
-		utils.InternalError(c, "failed to save uploaded file")
+	key := fmt.Sprintf("issues/issue_%s_%s", userID.String(), uuid.NewString())
+	publicURL, err := saveUploadedImage(c, fileHeader, key)
+	if badImageUpload(c, err) {
 		return
 	}
 
-	publicURL := "/uploads/" + filename
 	utils.Created(c, gin.H{
 		"image_url":  publicURL,
 		"image_urls": []string{publicURL},

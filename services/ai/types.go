@@ -42,6 +42,8 @@ type ClassifyResult struct {
 	SeverityLevel     string     `json:"severity_level,omitempty"`
 	PriorityLevel     string     `json:"priority_level,omitempty"`
 	AIConfidenceScore *float64   `json:"ai_confidence_score,omitempty"`
+	DepartmentID      *uuid.UUID `json:"department_id,omitempty"`
+	DepartmentName    string     `json:"department_name,omitempty"`
 }
 
 // Classifier is the swappable AI image classification contract.

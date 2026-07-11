@@ -35,9 +35,19 @@ type Config struct {
 	// Twilio SMS OTP.
 	OTPDailyLimit         int
 	OTPPerPhoneDailyLimit int
+	OTPDevMode            bool
 	TwilioAccountSID      string
 	TwilioAuthToken       string
 	TwilioFromNumber      string
+
+	// Image storage (local disk or Cloudflare R2).
+	StorageDriver   string
+	LocalUploadsDir string
+	R2AccountID     string
+	R2AccessKeyID   string
+	R2SecretAccessKey string
+	R2Bucket        string
+	R2PublicBaseURL string
 }
 
 func Load() *Config {
@@ -46,6 +56,7 @@ func Load() *Config {
 	aiEnabled := getEnv("AI_ENABLED", "true") != "false"
 	otpDaily, _ := strconv.Atoi(getEnv("OTP_DAILY_LIMIT", "100"))
 	otpPerPhone, _ := strconv.Atoi(getEnv("OTP_PER_PHONE_DAILY", "10"))
+	otpDevMode := getEnv("OTP_DEV_MODE", "") == "true"
 
 	return &Config{
 		DBHost:             getEnv("DB_HOST", "localhost"),
@@ -71,9 +82,18 @@ func Load() *Config {
 
 		OTPDailyLimit:         otpDaily,
 		OTPPerPhoneDailyLimit: otpPerPhone,
+		OTPDevMode:            otpDevMode,
 		TwilioAccountSID:      getEnv("TWILIO_ACCOUNT_SID", ""),
 		TwilioAuthToken:       getEnv("TWILIO_AUTH_TOKEN", ""),
 		TwilioFromNumber:      getEnv("TWILIO_FROM_NUMBER", ""),
+
+		StorageDriver:     getEnv("STORAGE_DRIVER", "local"),
+		LocalUploadsDir:   getEnv("LOCAL_UPLOADS_DIR", "./uploads"),
+		R2AccountID:       getEnv("R2_ACCOUNT_ID", ""),
+		R2AccessKeyID:     getEnv("R2_ACCESS_KEY_ID", ""),
+		R2SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
+		R2Bucket:          getEnv("R2_BUCKET", ""),
+		R2PublicBaseURL:   getEnv("R2_PUBLIC_BASE_URL", ""),
 	}
 }
 

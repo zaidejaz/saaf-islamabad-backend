@@ -85,6 +85,7 @@ type CreateReportRequest struct {
 	Longitude         float64    `json:"longitude" binding:"required" example:"73.0479"`
 	Address           string     `json:"address" example:"Street 5, G-9, Islamabad"`
 	CategoryID        *uuid.UUID `json:"category_id"`
+	DepartmentID      *uuid.UUID `json:"department_id"`
 	ImageURLs         []string   `json:"image_urls"`
 	SeverityLevel     string     `json:"severity_level,omitempty" example:"moderate"`
 	PriorityLevel     string     `json:"priority_level,omitempty" example:"medium"`

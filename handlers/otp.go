@@ -21,16 +21,22 @@ func InitOTP(cfg *config.Config) {
 	sender, err := otp.NewSender(otp.Config{
 		DailyLimit:         cfg.OTPDailyLimit,
 		PerPhoneDailyLimit: cfg.OTPPerPhoneDailyLimit,
+		DevMode:            cfg.OTPDevMode,
 		TwilioAccountSID:   cfg.TwilioAccountSID,
 		TwilioAuthToken:    cfg.TwilioAuthToken,
 		TwilioFromNumber:   cfg.TwilioFromNumber,
 	})
 	if err != nil {
-		log.Printf("twilio sms otp not configured: %v", err)
+		log.Printf("otp sender not configured: %v", err)
 		otpSender = nil
 		return
 	}
 	otpSender = sender
+	if cfg.OTPDevMode {
+		log.Printf("otp sender ready: console (OTP_DEV_MODE=true) daily_limit=%d per_phone=%d",
+			cfg.OTPDailyLimit, cfg.OTPPerPhoneDailyLimit)
+		return
+	}
 	log.Printf("otp sender ready: twilio sms daily_limit=%d per_phone=%d",
 		cfg.OTPDailyLimit, cfg.OTPPerPhoneDailyLimit)
 }
@@ -94,9 +100,15 @@ func SendOTP(c *gin.Context) {
 		return
 	}
 
+	channel := otpSender.Name()
+	message := "OTP sent via SMS"
+	if channel == otp.ProviderConsole {
+		message = "OTP generated (dev mode — check server logs)"
+	}
+
 	utils.OK(c, gin.H{
-		"message":            "OTP sent via SMS",
-		"channel":            "sms",
+		"message":            message,
+		"channel":            channel,
 		"expires_in_seconds": 300,
 	})
 }

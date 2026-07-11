@@ -62,6 +62,7 @@ func ClassifyIssue(c *gin.Context) {
 		writeClassifyError(c, err)
 		return
 	}
+	enrichClassificationResult(result)
 	utils.OK(c, result)
 }
 

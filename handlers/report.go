@@ -90,12 +90,10 @@ func CreateReport(c *gin.Context) {
 		report.PriorityLevel = models.Priority(priority)
 	}
 
-	// Auto-assign department from category default
-	if categoryID != nil {
-		var cat models.IssueCategory
-		if err := database.DB.First(&cat, "id = ?", categoryID).Error; err == nil && cat.DefaultDepartmentID != nil {
-			report.DepartmentID = cat.DefaultDepartmentID
-		}
+	// Auto-assign department from AI category mapping.
+	applyDepartmentFromCategory(&report, categoryID)
+	if req.DepartmentID != nil {
+		report.DepartmentID = req.DepartmentID
 	}
 
 	if err := database.DB.Create(&report).Error; err != nil {

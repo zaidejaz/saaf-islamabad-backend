@@ -63,7 +63,9 @@ func Connect(cfg *config.Config) {
 	log.Println("database migrated")
 
 	seedSuperAdmin(cfg)
+	seedDepartments()
 	seedIssueCategories()
+	linkCategoriesToDepartments()
 }
 
 // Approved civic issue categories for AI classification (spec v1.0).
@@ -83,6 +85,76 @@ var defaultCategories = []struct {
 	{"Footpaths / Sidewalks", "Broken, blocked, or unsafe footpaths and sidewalks"},
 	{"Stray Animals", "Stray animals causing public safety or sanitation concerns"},
 	{"Encroachments", "Illegal structures or occupation of public space"},
+}
+
+var defaultDepartments = []struct {
+	Name         string
+	Description  string
+	ContactEmail string
+}{
+	{"Waste Management", "Uncollected garbage, litter, and dump sites", "waste@islamabad.gov.pk"},
+	{"Water & Sanitation", "Water supply, sewerage, and drainage", "water@islamabad.gov.pk"},
+	{"Roads & Infrastructure", "Roads, bridges, footpaths, and traffic infrastructure", "roads@islamabad.gov.pk"},
+	{"Electrical & Street Lighting", "Power lines, poles, and street lighting", "electrical@islamabad.gov.pk"},
+	{"Parks & Environment", "Parks, green belts, and environmental upkeep", "parks@islamabad.gov.pk"},
+	{"Public Safety & Encroachments", "Stray animals, encroachments, and public safety", "safety@islamabad.gov.pk"},
+}
+
+// Maps seeded category names to department names for AI auto-routing.
+var categoryDepartmentMap = map[string]string{
+	"Waste / Garbage":               "Waste Management",
+	"Sewerage / Pipes":              "Water & Sanitation",
+	"Traffic Pipes":                 "Roads & Infrastructure",
+	"Parks & Green Areas":           "Parks & Environment",
+	"Broken Roads":                  "Roads & Infrastructure",
+	"Electric Lines":                "Electrical & Street Lighting",
+	"Water Supply":                  "Water & Sanitation",
+	"Street Lights":                 "Electrical & Street Lighting",
+	"Bridges / Flyovers":            "Roads & Infrastructure",
+	"Footpaths / Sidewalks":         "Roads & Infrastructure",
+	"Stray Animals":                 "Public Safety & Encroachments",
+	"Encroachments":                 "Public Safety & Encroachments",
+}
+
+func seedDepartments() {
+	for _, d := range defaultDepartments {
+		var count int64
+		DB.Model(&models.Department{}).Where("name = ?", d.Name).Count(&count)
+		if count > 0 {
+			continue
+		}
+		dept := models.Department{
+			Name:         d.Name,
+			Description:  d.Description,
+			ContactEmail: d.ContactEmail,
+		}
+		if err := DB.Create(&dept).Error; err != nil {
+			log.Printf("warning: failed to seed department %q: %v", d.Name, err)
+			continue
+		}
+		log.Printf("seeded department: %s", d.Name)
+	}
+}
+
+func linkCategoriesToDepartments() {
+	for catName, deptName := range categoryDepartmentMap {
+		var cat models.IssueCategory
+		var dept models.Department
+		if err := DB.Where("name = ?", catName).First(&cat).Error; err != nil {
+			continue
+		}
+		if err := DB.Where("name = ?", deptName).First(&dept).Error; err != nil {
+			continue
+		}
+		if cat.DefaultDepartmentID != nil && *cat.DefaultDepartmentID == dept.ID {
+			continue
+		}
+		if err := DB.Model(&cat).Update("default_department_id", dept.ID).Error; err != nil {
+			log.Printf("warning: failed to link category %q to department %q: %v", catName, deptName, err)
+			continue
+		}
+		log.Printf("linked category %q -> department %q", catName, deptName)
+	}
 }
 
 func seedIssueCategories() {
