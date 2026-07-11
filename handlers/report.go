@@ -75,6 +75,7 @@ func CreateReport(c *gin.Context) {
 	// Lifecycle: report submitted — confirm to citizen, and ping the active
 	// staff of the auto-routed department (if any).
 	notifyReportSubmitted(report)
+	notifyOtherCitizensOfNewReport(report)
 
 	utils.Created(c, report)
 }
@@ -113,11 +114,21 @@ func ListReports(c *gin.Context) {
 		q = q.Where("severity_level = ?", sev)
 	}
 
-	// Citizens only see their own reports
+	// Citizens see their own reports by default. Pass scope=community to list
+	// all citizen reports for the city map / awareness feed.
+	// Staff see every report routed to their department.
 	role := c.MustGet("user_role").(models.Role)
-	if role == models.RoleCitizen {
+	if role == models.RoleCitizen && c.Query("scope") != "community" {
 		userID := c.MustGet("user_id").(uuid.UUID)
 		q = q.Where("user_id = ?", userID)
+	}
+	if role == models.RoleStaff {
+		staff, err := loadStaffUser(c.MustGet("user_id").(uuid.UUID))
+		if err != nil || staff.DepartmentID == nil {
+			q = q.Where("1 = 0")
+		} else {
+			q = q.Where("department_id = ?", *staff.DepartmentID)
+		}
 	}
 
 	q.Count(&total)
@@ -152,6 +163,15 @@ func GetReport(c *gin.Context) {
 		First(&report, "id = ?", id).Error; err != nil {
 		utils.NotFound(c, "report not found")
 		return
+	}
+
+	role := c.MustGet("user_role").(models.Role)
+	if role == models.RoleStaff {
+		staff, err := loadStaffUser(c.MustGet("user_id").(uuid.UUID))
+		if err != nil || !staffCanAccessReport(staff, report) {
+			utils.Forbidden(c, "report is not in your department")
+			return
+		}
 	}
 
 	utils.OK(c, report)
@@ -224,6 +244,187 @@ func UpdateReportStatus(c *gin.Context) {
 	}
 
 	utils.OK(c, report)
+}
+
+// UpdateReport godoc
+// @Summary      Update report details (staff corrections)
+// @Description  Staff may correct report fields for reports in their department
+// @Tags         Reports
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id    path  string               true  "Report UUID"
+// @Param        body  body  UpdateReportRequest  true  "Fields to update"
+// @Success      200   {object}  utils.APIResponse{data=models.Report}
+// @Router       /reports/{id} [patch]
+func UpdateReport(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.BadRequest(c, "invalid report id")
+		return
+	}
+
+	var req UpdateReportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+
+	staffID := c.MustGet("user_id").(uuid.UUID)
+	staff, err := loadStaffUser(staffID)
+	if err != nil {
+		utils.Forbidden(c, "staff access required")
+		return
+	}
+
+	var report models.Report
+	if err := database.DB.First(&report, "id = ?", id).Error; err != nil {
+		utils.NotFound(c, "report not found")
+		return
+	}
+	if !staffCanAccessReport(staff, report) {
+		utils.Forbidden(c, "report is not in your department")
+		return
+	}
+	if report.Status == models.StatusResolved || report.Status == models.StatusRejected {
+		utils.BadRequest(c, "resolved or rejected reports cannot be edited")
+		return
+	}
+
+	if req.Title != nil {
+		report.Title = *req.Title
+	}
+	if req.Description != nil {
+		report.Description = *req.Description
+	}
+	if req.Address != nil {
+		report.Address = *req.Address
+	}
+	if req.Latitude != nil {
+		report.Latitude = *req.Latitude
+	}
+	if req.Longitude != nil {
+		report.Longitude = *req.Longitude
+	}
+	if req.SeverityLevel != nil {
+		report.SeverityLevel = models.Severity(*req.SeverityLevel)
+	}
+	if req.PriorityLevel != nil {
+		report.PriorityLevel = models.Priority(*req.PriorityLevel)
+	}
+	now := time.Now()
+	report.UpdatedAt = &now
+
+	if err := database.DB.Save(&report).Error; err != nil {
+		utils.InternalError(c, "failed to update report")
+		return
+	}
+
+	database.DB.Create(&models.ReportStatusHistory{
+		ReportID:  report.ID,
+		ChangedBy: staffID,
+		OldStatus: string(report.Status),
+		NewStatus: string(report.Status),
+		Comment:   "Staff updated report details",
+	})
+
+	database.DB.Preload("Category").Preload("Department").Preload("Images").First(&report, "id = ?", report.ID)
+	utils.OK(c, report)
+}
+
+// ConfirmStaffReport godoc
+// @Summary      Confirm department report (staff)
+// @Description  Staff reviews a department report, claims ownership, and marks it ready for worker dispatch
+// @Tags         Reports
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id  path  string  true  "Report UUID"
+// @Success      200  {object}  utils.APIResponse
+// @Router       /reports/{id}/staff-confirm [post]
+func ConfirmStaffReport(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.BadRequest(c, "invalid report id")
+		return
+	}
+
+	staffID := c.MustGet("user_id").(uuid.UUID)
+	staff, err := loadStaffUser(staffID)
+	if err != nil {
+		utils.Forbidden(c, "staff access required")
+		return
+	}
+
+	var report models.Report
+	if err := database.DB.First(&report, "id = ?", id).Error; err != nil {
+		utils.NotFound(c, "report not found")
+		return
+	}
+	if !staffCanAccessReport(staff, report) {
+		utils.Forbidden(c, "report is not in your department")
+		return
+	}
+	if report.Status == models.StatusResolved || report.Status == models.StatusRejected {
+		utils.BadRequest(c, "report is already closed")
+		return
+	}
+
+	var assignment models.Assignment
+	assignErr := database.DB.Where("report_id = ? AND staff_id = ?", report.ID, staffID).First(&assignment).Error
+	if assignErr != nil {
+		assignment = models.Assignment{
+			ReportID:   report.ID,
+			StaffID:    staffID,
+			AssignedBy: staffID,
+		}
+		if err := database.DB.Create(&assignment).Error; err != nil {
+			utils.InternalError(c, "failed to create assignment")
+			return
+		}
+	}
+
+	now := time.Now()
+	oldStatus := string(report.Status)
+	if report.Status == models.StatusSubmitted || report.Status == models.StatusInReview {
+		report.Status = models.StatusAssigned
+		report.UpdatedAt = &now
+		database.DB.Save(&report)
+
+		database.DB.Create(&models.ReportStatusHistory{
+			ReportID:  report.ID,
+			ChangedBy: staffID,
+			OldStatus: oldStatus,
+			NewStatus: string(models.StatusAssigned),
+			Comment:   "Reviewed and confirmed by staff",
+		})
+
+		if oldStatus != string(models.StatusAssigned) {
+			deptName := ""
+			if report.DepartmentID != nil {
+				var dept models.Department
+				if database.DB.First(&dept, "id = ?", *report.DepartmentID).Error == nil {
+					deptName = dept.Name
+				}
+			}
+			notifyReportAssigned(report, staff, deptName)
+		}
+	} else {
+		database.DB.Create(&models.ReportStatusHistory{
+			ReportID:  report.ID,
+			ChangedBy: staffID,
+			OldStatus: oldStatus,
+			NewStatus: oldStatus,
+			Comment:   "Staff confirmed report for worker dispatch",
+		})
+	}
+
+	database.DB.Preload("Category").Preload("Department").Preload("Images").First(&report, "id = ?", report.ID)
+	database.DB.Preload("Staff").Preload("Worker").Preload("Report").First(&assignment, "id = ?", assignment.ID)
+
+	utils.OK(c, gin.H{
+		"report":     report,
+		"assignment": assignment,
+	})
 }
 
 // GetReportStats godoc

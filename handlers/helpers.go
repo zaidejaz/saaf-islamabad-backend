@@ -94,6 +94,28 @@ func notifyReportSubmitted(report models.Report) {
 	}
 }
 
+// notifyOtherCitizensOfNewReport alerts every other active citizen so they can
+// stay aware of new issues reported in the city (map + notifications).
+func notifyOtherCitizensOfNewReport(report models.Report) {
+	var citizens []models.User
+	if err := database.DB.
+		Where("role = ? AND is_active = true AND id <> ?", models.RoleCitizen, report.UserID).
+		Find(&citizens).Error; err != nil {
+		log.Printf("citizen fan-out lookup failed (report=%s): %v", report.ID, err)
+		return
+	}
+
+	title := "New issue reported nearby"
+	message := fmt.Sprintf(
+		"Another citizen reported an issue%s. Open the map to see what is happening in your area.",
+		titleSuffix(report.Title),
+	)
+
+	for _, citizen := range citizens {
+		notifyOnce(citizen.ID, &report.ID, title, message, models.NotifNearbyIssue)
+	}
+}
+
 // notifyReportAssigned notifies the citizen and the assigned staff member
 // when an admin formally assigns a report to a department/staff.
 func notifyReportAssigned(report models.Report, staff models.User, departmentName string) {
@@ -157,4 +179,17 @@ func titleSuffix(title string) string {
 		return ""
 	}
 	return " \"" + title + "\""
+}
+
+func staffCanAccessReport(staff models.User, report models.Report) bool {
+	if staff.Role != models.RoleStaff || staff.DepartmentID == nil || report.DepartmentID == nil {
+		return false
+	}
+	return *staff.DepartmentID == *report.DepartmentID
+}
+
+func loadStaffUser(staffID uuid.UUID) (models.User, error) {
+	var staff models.User
+	err := database.DB.First(&staff, "id = ? AND role = ? AND is_active = true", staffID, models.RoleStaff).Error
+	return staff, err
 }

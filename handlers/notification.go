@@ -1,12 +1,74 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/zaidejaz/saaf-islamabad-backend/database"
 	"github.com/zaidejaz/saaf-islamabad-backend/models"
 	"github.com/zaidejaz/saaf-islamabad-backend/utils"
 )
+
+type notificationResponse struct {
+	models.Notification
+	ImageURL string `json:"image_url,omitempty"`
+}
+
+func isResolutionNotification(title, message string) bool {
+	t := strings.ToLower(title)
+	m := strings.ToLower(message)
+	if strings.Contains(t, "resolved") || strings.Contains(t, "completed") {
+		return true
+	}
+	if strings.Contains(m, "resolution image") ||
+		strings.Contains(m, "marked the report resolved") ||
+		strings.Contains(m, "has been resolved") {
+		return true
+	}
+	return false
+}
+
+func resolutionURLsForReports(reportIDs []uuid.UUID) map[uuid.UUID]string {
+	result := make(map[uuid.UUID]string)
+	if len(reportIDs) == 0 {
+		return result
+	}
+
+	var images []models.ReportImage
+	database.DB.Where("report_id IN ? AND is_resolution = ?", reportIDs, true).
+		Order("created_at DESC").
+		Find(&images)
+
+	for _, img := range images {
+		if _, exists := result[img.ReportID]; !exists {
+			result[img.ReportID] = img.ImageURL
+		}
+	}
+	return result
+}
+
+func enrichNotifications(notifs []models.Notification) []notificationResponse {
+	reportIDs := make([]uuid.UUID, 0)
+	for _, n := range notifs {
+		if n.ReportID != nil && isResolutionNotification(n.Title, n.Message) {
+			reportIDs = append(reportIDs, *n.ReportID)
+		}
+	}
+
+	urls := resolutionURLsForReports(reportIDs)
+	out := make([]notificationResponse, 0, len(notifs))
+	for _, n := range notifs {
+		item := notificationResponse{Notification: n}
+		if n.ReportID != nil && isResolutionNotification(n.Title, n.Message) {
+			if url, ok := urls[*n.ReportID]; ok {
+				item.ImageURL = url
+			}
+		}
+		out = append(out, item)
+	}
+	return out
+}
 
 // CreateNotification godoc
 // @Summary      Create notification
@@ -68,7 +130,7 @@ func ListMyNotifications(c *gin.Context) {
 	q.Offset(utils.GetOffset(page, pageSize)).Limit(pageSize).
 		Order("created_at DESC").Find(&notifs)
 
-	utils.Paginated(c, notifs, page, pageSize, total)
+	utils.Paginated(c, enrichNotifications(notifs), page, pageSize, total)
 }
 
 // MarkNotificationRead godoc

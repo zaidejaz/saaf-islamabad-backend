@@ -91,6 +91,16 @@ type UpdateReportStatusRequest struct {
 	Comment string `json:"comment" example:"Issue is being reviewed"`
 }
 
+type UpdateReportRequest struct {
+	Title         *string  `json:"title"`
+	Description   *string  `json:"description"`
+	Address       *string  `json:"address"`
+	Latitude      *float64 `json:"latitude"`
+	Longitude     *float64 `json:"longitude"`
+	SeverityLevel *string  `json:"severity_level"`
+	PriorityLevel *string  `json:"priority_level"`
+}
+
 // ── Assignment ──────────────────────────────────────
 
 // CreateAssignmentRequest is used by admin (assign report -> staff) and

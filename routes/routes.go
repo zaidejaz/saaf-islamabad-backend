@@ -45,6 +45,8 @@ func Setup(r *gin.Engine) {
 	adminStaff.Use(middleware.AuthRequired(), middleware.RoleRequired(models.RoleAdmin, models.RoleStaff))
 	{
 		adminStaff.PATCH("/reports/:id/status", handlers.UpdateReportStatus)
+		adminStaff.PATCH("/reports/:id", handlers.UpdateReport)
+		adminStaff.POST("/reports/:id/staff-confirm", handlers.ConfirmStaffReport)
 		adminStaff.GET("/reports/stats", handlers.GetReportStats)
 
 		// Assignments (also accessible by workers via dedicated worker routes below).
