@@ -8,9 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/swaggo/swag"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/swaggo/swag"
 
 	"github.com/zaidejaz/saaf-islamabad-backend/config"
 	"github.com/zaidejaz/saaf-islamabad-backend/database"
@@ -18,6 +18,7 @@ import (
 	"github.com/zaidejaz/saaf-islamabad-backend/handlers"
 	"github.com/zaidejaz/saaf-islamabad-backend/middleware"
 	"github.com/zaidejaz/saaf-islamabad-backend/routes"
+	"github.com/zaidejaz/saaf-islamabad-backend/services/ai"
 )
 
 // @title          Saaf Islamabad API
@@ -42,9 +43,16 @@ func main() {
 	middleware.InitJWT(cfg.JWTSecret)
 
 	gin.SetMode(cfg.GinMode)
-	handlers.InitOTP(cfg.GinMode == gin.DebugMode)
+	handlers.InitOTP(cfg)
 
 	database.Connect(cfg)
+
+	if classifier, err := ai.NewClassifier(cfg); err != nil {
+		log.Printf("ai classifier not enabled: %v", err)
+		handlers.InitAI(nil, cfg.AITimeoutSecs)
+	} else {
+		handlers.InitAI(classifier, cfg.AITimeoutSecs)
+	}
 
 	if spec, ok := swag.GetSwagger("swagger").(*swag.Spec); ok {
 		baseURL := cfg.BaseURL

@@ -9,12 +9,12 @@ import "github.com/google/uuid"
 // Citizens must register with phone + password (Pakistani format).
 // Admin / Staff / Worker accounts use email + password.
 type RegisterRequest struct {
-	FullName string `json:"full_name" binding:"required" example:"Ali Khan"`
-	Email    string `json:"email,omitempty" example:"ali@example.com"`
-	Phone    string `json:"phone,omitempty" example:"+923001234567"`
-	Password string `json:"password" binding:"required,min=6" example:"secret123"`
-	Role     string `json:"role" binding:"required,oneof=citizen admin staff worker" example:"citizen"`
-	OTP      string `json:"otp,omitempty" example:"123456"`
+	FullName     string     `json:"full_name" binding:"required" example:"Ali Khan"`
+	Email        string     `json:"email,omitempty" example:"ali@example.com"`
+	Phone        string     `json:"phone,omitempty" example:"+923001234567"`
+	Password     string     `json:"password" binding:"required,min=6" example:"secret123"`
+	Role         string     `json:"role" binding:"required,oneof=citizen admin staff worker" example:"citizen"`
+	OTP          string     `json:"otp,omitempty" example:"123456"`
 	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
 }
 
@@ -76,14 +76,30 @@ type UpdateCategoryRequest struct {
 
 // ── Report ──────────────────────────────────────────
 
+// CreateReportRequest submits a civic issue. When title/category are omitted
+// and image_urls are present, the backend runs AI classification first.
 type CreateReportRequest struct {
-	Title       string     `json:"title" example:"Garbage pile on Street 5"`
-	Description string     `json:"description" example:"Large pile of uncollected garbage"`
-	Latitude    float64    `json:"latitude" binding:"required" example:"33.6844"`
-	Longitude   float64    `json:"longitude" binding:"required" example:"73.0479"`
-	Address     string     `json:"address" example:"Street 5, G-9, Islamabad"`
-	CategoryID  *uuid.UUID `json:"category_id"`
-	ImageURLs   []string   `json:"image_urls"`
+	Title             string     `json:"title" example:"Garbage pile on Street 5"`
+	Description       string     `json:"description" example:"Large pile of uncollected garbage"`
+	Latitude          float64    `json:"latitude" binding:"required" example:"33.6844"`
+	Longitude         float64    `json:"longitude" binding:"required" example:"73.0479"`
+	Address           string     `json:"address" example:"Street 5, G-9, Islamabad"`
+	CategoryID        *uuid.UUID `json:"category_id"`
+	ImageURLs         []string   `json:"image_urls"`
+	SeverityLevel     string     `json:"severity_level,omitempty" example:"moderate"`
+	PriorityLevel     string     `json:"priority_level,omitempty" example:"medium"`
+	AIConfidenceScore *float64   `json:"ai_confidence_score,omitempty" example:"0.91"`
+	// AutoClassify forces AI classification even when title/category are set.
+	// Defaults to true when title and category_id are both empty.
+	AutoClassify *bool `json:"auto_classify,omitempty"`
+}
+
+// ClassifyRequest is the payload for POST /classify.
+type ClassifyRequest struct {
+	ImageURLs []string `json:"image_urls" binding:"required" example:"http://localhost:8080/uploads/issue.jpg"`
+	Latitude  float64  `json:"latitude" example:"33.6844"`
+	Longitude float64  `json:"longitude" example:"73.0479"`
+	Address   string   `json:"address" example:"Street 5, G-9, Islamabad"`
 }
 
 type UpdateReportStatusRequest struct {

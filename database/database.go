@@ -63,6 +63,45 @@ func Connect(cfg *config.Config) {
 	log.Println("database migrated")
 
 	seedSuperAdmin(cfg)
+	seedIssueCategories()
+}
+
+// Approved civic issue categories for AI classification (spec v1.0).
+var defaultCategories = []struct {
+	Name        string
+	Description string
+}{
+	{"Waste / Garbage", "Uncollected garbage, litter, dump sites, and waste piles"},
+	{"Sewerage / Pipes", "Blocked, overflowing, or damaged sewerage and drainage pipes"},
+	{"Traffic Pipes", "Traffic-related civic infrastructure and pipe issues"},
+	{"Parks & Green Areas", "Damaged parks, neglected green belts, and public landscaping"},
+	{"Broken Roads", "Potholes, cracked asphalt, and damaged road surfaces"},
+	{"Electric Lines", "Fallen, exposed, or damaged electrical lines and poles"},
+	{"Water Supply", "Leaking, broken, or disrupted public water supply"},
+	{"Street Lights", "Non-functional, damaged, or missing street lights"},
+	{"Bridges / Flyovers", "Damage or hazards on bridges and flyovers"},
+	{"Footpaths / Sidewalks", "Broken, blocked, or unsafe footpaths and sidewalks"},
+	{"Stray Animals", "Stray animals causing public safety or sanitation concerns"},
+	{"Encroachments", "Illegal structures or occupation of public space"},
+}
+
+func seedIssueCategories() {
+	for _, c := range defaultCategories {
+		var count int64
+		DB.Model(&models.IssueCategory{}).Where("name = ?", c.Name).Count(&count)
+		if count > 0 {
+			continue
+		}
+		cat := models.IssueCategory{
+			Name:        c.Name,
+			Description: c.Description,
+		}
+		if err := DB.Create(&cat).Error; err != nil {
+			log.Printf("warning: failed to seed category %q: %v", c.Name, err)
+			continue
+		}
+		log.Printf("seeded category: %s", c.Name)
+	}
 }
 
 // applySchemaPatches runs idempotent ALTERs that GORM's AutoMigrate doesn't

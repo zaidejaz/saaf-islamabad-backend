@@ -31,6 +31,9 @@ func Setup(r *gin.Engine) {
 	{
 		protected.GET("/auth/me", handlers.GetMe)
 
+		protected.POST("/uploads", handlers.UploadIssueImage)
+		protected.POST("/classify", handlers.ClassifyIssue)
+
 		protected.POST("/reports", handlers.CreateReport)
 		protected.GET("/reports", handlers.ListReports)
 		protected.GET("/reports/:id", handlers.GetReport)

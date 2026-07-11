@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,7 +13,7 @@ import (
 
 // CreateReport godoc
 // @Summary      Create report
-// @Description  Submit a new issue report (citizen)
+// @Description  Submit a new issue report (citizen). If only a photo (+ location) is provided, AI classifies the issue and fills title, description, category, severity, and priority.
 // @Tags         Reports
 // @Accept       json
 // @Produce      json
@@ -30,21 +31,69 @@ func CreateReport(c *gin.Context) {
 
 	userID := c.MustGet("user_id").(uuid.UUID)
 
+	shouldClassify := false
+	if req.AutoClassify != nil {
+		shouldClassify = *req.AutoClassify
+	} else if strings.TrimSpace(req.Title) == "" && req.CategoryID == nil {
+		shouldClassify = len(req.ImageURLs) > 0
+	}
+
+	title := strings.TrimSpace(req.Title)
+	description := strings.TrimSpace(req.Description)
+	categoryID := req.CategoryID
+	severity := strings.ToLower(strings.TrimSpace(req.SeverityLevel))
+	priority := strings.ToLower(strings.TrimSpace(req.PriorityLevel))
+	confidence := req.AIConfidenceScore
+
+	if shouldClassify {
+		if len(req.ImageURLs) == 0 {
+			utils.BadRequest(c, "image_urls is required for AI classification")
+			return
+		}
+		lat, lng := req.Latitude, req.Longitude
+		result, err := runClassification(c.Request.Context(), req.ImageURLs, &lat, &lng, req.Address)
+		if err != nil {
+			writeClassifyError(c, err)
+			return
+		}
+		if !result.IsValidIssue {
+			c.JSON(400, gin.H{
+				"success": false,
+				"message": result.Message,
+				"data":    result,
+			})
+			return
+		}
+		title = result.Title
+		description = result.Description
+		categoryID = result.CategoryID
+		severity = result.SeverityLevel
+		priority = result.PriorityLevel
+		confidence = result.AIConfidenceScore
+	}
+
 	report := models.Report{
-		UserID:      userID,
-		Title:       req.Title,
-		Description: req.Description,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		Address:     req.Address,
-		CategoryID:  req.CategoryID,
-		Status:      models.StatusSubmitted,
+		UserID:            userID,
+		Title:             title,
+		Description:       description,
+		Latitude:          req.Latitude,
+		Longitude:         req.Longitude,
+		Address:           req.Address,
+		CategoryID:        categoryID,
+		AIConfidenceScore: confidence,
+		Status:            models.StatusSubmitted,
+	}
+	if severity != "" {
+		report.SeverityLevel = models.Severity(severity)
+	}
+	if priority != "" {
+		report.PriorityLevel = models.Priority(priority)
 	}
 
 	// Auto-assign department from category default
-	if req.CategoryID != nil {
+	if categoryID != nil {
 		var cat models.IssueCategory
-		if err := database.DB.First(&cat, "id = ?", req.CategoryID).Error; err == nil && cat.DefaultDepartmentID != nil {
+		if err := database.DB.First(&cat, "id = ?", categoryID).Error; err == nil && cat.DefaultDepartmentID != nil {
 			report.DepartmentID = cat.DefaultDepartmentID
 		}
 	}
@@ -62,12 +111,15 @@ func CreateReport(c *gin.Context) {
 		database.DB.Create(&img)
 	}
 
-	// Record initial status history
+	comment := "Report submitted"
+	if shouldClassify {
+		comment = "Report submitted (AI classified)"
+	}
 	database.DB.Create(&models.ReportStatusHistory{
 		ReportID:  report.ID,
 		ChangedBy: userID,
 		NewStatus: string(models.StatusSubmitted),
-		Comment:   "Report submitted",
+		Comment:   comment,
 	})
 
 	database.DB.Preload("Category").Preload("Department").Preload("Images").First(&report, "id = ?", report.ID)

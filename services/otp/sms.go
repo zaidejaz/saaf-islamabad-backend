@@ -7,48 +7,36 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
 
-type SMSSender struct {
+const ProviderSMS = "sms"
+
+// TwilioSMSSender delivers OTPs via Twilio SMS to the phone number.
+type TwilioSMSSender struct {
 	accountSID string
 	authToken  string
 	fromNumber string
 	httpClient *http.Client
-	debugMode  bool
 }
 
-func NewSMSSender(debugMode bool) *SMSSender {
-	return &SMSSender{
-		accountSID: strings.TrimSpace(os.Getenv("TWILIO_ACCOUNT_SID")),
-		authToken:  strings.TrimSpace(os.Getenv("TWILIO_AUTH_TOKEN")),
-		fromNumber: strings.TrimSpace(os.Getenv("TWILIO_FROM_NUMBER")),
+func NewTwilioSMSSender(cfg Config) *TwilioSMSSender {
+	return &TwilioSMSSender{
+		accountSID: strings.TrimSpace(cfg.TwilioAccountSID),
+		authToken:  strings.TrimSpace(cfg.TwilioAuthToken),
+		fromNumber: strings.TrimSpace(cfg.TwilioFromNumber),
 		httpClient: &http.Client{Timeout: 15 * time.Second},
-		debugMode:  debugMode,
 	}
 }
 
-func (s *SMSSender) IsConfigured() bool {
-	return s.configured()
-}
-
-func (s *SMSSender) configured() bool {
+func (s *TwilioSMSSender) Name() string { return ProviderSMS }
+func (s *TwilioSMSSender) IsConfigured() bool {
 	return s.accountSID != "" && s.authToken != "" && s.fromNumber != ""
 }
 
-// Send delivers the OTP via Twilio when configured; otherwise logs it in debug mode.
-func (s *SMSSender) Send(phone, code string) error {
+func (s *TwilioSMSSender) Send(phone, code string) error {
 	message := fmt.Sprintf("Your Saaf Islamabad verification code is %s. Valid for 5 minutes.", code)
-
-	if !s.configured() {
-		if s.debugMode {
-			log.Printf("[OTP] phone=%s code=%s (SMS provider not configured — set TWILIO_* env vars for production)", phone, code)
-			return nil
-		}
-		return fmt.Errorf("SMS service is not configured")
-	}
 
 	endpoint := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", s.accountSID)
 	form := url.Values{}
@@ -69,7 +57,7 @@ func (s *SMSSender) Send(phone, code string) error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode >= 300 {
 		var twilioErr struct {
 			Message string `json:"message"`
@@ -81,6 +69,6 @@ func (s *SMSSender) Send(phone, code string) error {
 		return fmt.Errorf("SMS delivery failed with status %d", resp.StatusCode)
 	}
 
-	log.Printf("[OTP] SMS sent to %s", phone)
+	log.Printf("[OTP:sms] sent to %s", phone)
 	return nil
 }

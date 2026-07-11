@@ -1,27 +1,43 @@
 package handlers
 
 import (
+	"log"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/zaidejaz/saaf-islamabad-backend/config"
 	"github.com/zaidejaz/saaf-islamabad-backend/services/otp"
 	"github.com/zaidejaz/saaf-islamabad-backend/utils"
 )
 
 var (
-	otpStore   = otp.NewStore()
-	otpSender  *otp.SMSSender
-	otpDebug   bool
+	otpStore  *otp.Store
+	otpSender otp.Sender
 )
 
-func InitOTP(debugMode bool) {
-	otpDebug = debugMode
-	otpSender = otp.NewSMSSender(debugMode)
+func InitOTP(cfg *config.Config) {
+	otpStore = otp.NewStore(cfg.OTPDailyLimit, cfg.OTPPerPhoneDailyLimit)
+
+	sender, err := otp.NewSender(otp.Config{
+		DailyLimit:         cfg.OTPDailyLimit,
+		PerPhoneDailyLimit: cfg.OTPPerPhoneDailyLimit,
+		TwilioAccountSID:   cfg.TwilioAccountSID,
+		TwilioAuthToken:    cfg.TwilioAuthToken,
+		TwilioFromNumber:   cfg.TwilioFromNumber,
+	})
+	if err != nil {
+		log.Printf("twilio sms otp not configured: %v", err)
+		otpSender = nil
+		return
+	}
+	otpSender = sender
+	log.Printf("otp sender ready: twilio sms daily_limit=%d per_phone=%d",
+		cfg.OTPDailyLimit, cfg.OTPPerPhoneDailyLimit)
 }
 
 // SendOTP godoc
-// @Summary      Send phone OTP
-// @Description  Sends a 6-digit OTP to a Pakistani mobile number for citizen registration.
+// @Summary      Send phone OTP via SMS
+// @Description  Sends a 6-digit OTP by SMS (Twilio) to a Pakistani mobile number for citizen registration.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -29,8 +45,14 @@ func InitOTP(debugMode bool) {
 // @Success      200   {object}  utils.APIResponse
 // @Failure      400   {object}  utils.APIResponse
 // @Failure      409   {object}  utils.APIResponse
+// @Failure      503   {object}  utils.APIResponse
 // @Router       /auth/otp/send [post]
 func SendOTP(c *gin.Context) {
+	if otpSender == nil {
+		utils.Error(c, 503, "SMS OTP is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER.")
+		return
+	}
+
 	var req SendOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.BadRequest(c, err.Error())
@@ -67,17 +89,14 @@ func SendOTP(c *gin.Context) {
 	}
 
 	if err := otpSender.Send(phone, code); err != nil {
-		utils.InternalError(c, "failed to send OTP")
+		log.Printf("sms otp send failed (phone=%s): %v", phone, err)
+		utils.InternalError(c, "failed to send SMS OTP: "+err.Error())
 		return
 	}
 
-	payload := gin.H{
-		"message": "OTP sent successfully",
+	utils.OK(c, gin.H{
+		"message":            "OTP sent via SMS",
+		"channel":            "sms",
 		"expires_in_seconds": 300,
-	}
-	if otpDebug && otpSender != nil && !otpSender.IsConfigured() {
-		payload["dev_otp"] = code
-	}
-
-	utils.OK(c, payload)
+	})
 }
