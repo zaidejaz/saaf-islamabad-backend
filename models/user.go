@@ -33,6 +33,8 @@ type User struct {
 	Role         Role       `gorm:"size:20;not null;default:'citizen'" json:"role"`
 	DepartmentID *uuid.UUID `gorm:"type:uuid" json:"department_id,omitempty"`
 	Department   *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
+	// Workers created by a department staff member; used to scope worker lists and dispatch.
+	ManagedByStaffID *uuid.UUID `gorm:"type:uuid;index" json:"managed_by_staff_id,omitempty"`
 	IsVerified   bool       `gorm:"default:false" json:"is_verified"`
 	IsActive     bool       `gorm:"default:true" json:"is_active"`
 	DeletedAt    *time.Time `json:"deleted_at,omitempty"`

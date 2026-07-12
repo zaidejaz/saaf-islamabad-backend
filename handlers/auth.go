@@ -73,13 +73,20 @@ func Register(c *gin.Context) {
 			return
 		}
 		user.Phone = &phone
-		// Citizens may optionally still provide email.
+		// Citizens may optionally provide email — must not collide with worker/staff/admin emails.
 		if email := strings.TrimSpace(req.Email); email != "" {
 			if _, err := mail.ParseAddress(email); err != nil {
 				utils.BadRequest(c, "invalid email format")
 				return
 			}
 			emailLower := strings.ToLower(email)
+			if exists, err := userExistsByEmail(emailLower); err != nil {
+				utils.InternalError(c, "lookup failed")
+				return
+			} else if exists {
+				utils.Error(c, http.StatusConflict, "email already registered — use a different email or leave it blank")
+				return
+			}
 			user.Email = &emailLower
 		}
 
@@ -126,6 +133,11 @@ func Register(c *gin.Context) {
 				utils.Error(c, http.StatusConflict, err.Error())
 				return
 			}
+		}
+
+		if role == models.RoleWorker {
+			utils.BadRequest(c, "workers are created by department staff via POST /api/v1/workers")
+			return
 		}
 
 	default:
@@ -245,6 +257,60 @@ func GetMe(c *gin.Context) {
 		return
 	}
 	utils.OK(c, user)
+}
+
+// ChangePassword godoc
+// @Summary      Change current user's password
+// @Description  Authenticated citizens, workers, staff, and admins can update their own password by providing the current password.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body      ChangePasswordRequest  true  "Password update payload"
+// @Success      200   {object}  utils.APIResponse
+// @Failure      400   {object}  utils.APIResponse
+// @Failure      401   {object}  utils.APIResponse
+// @Router       /auth/change-password [patch]
+func ChangePassword(c *gin.Context) {
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+
+	userID := c.MustGet("user_id")
+	var user models.User
+	if err := database.DB.First(&user, "id = ? AND is_active = true", userID).Error; err != nil {
+		utils.NotFound(c, "user not found")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		utils.Unauthorized(c, "current password is incorrect")
+		return
+	}
+
+	if req.CurrentPassword == req.NewPassword {
+		utils.BadRequest(c, "new password must be different from current password")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		utils.InternalError(c, "failed to hash password")
+		return
+	}
+
+	now := time.Now()
+	if err := database.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+		"password_hash": string(hash),
+		"updated_at":    &now,
+	}).Error; err != nil {
+		utils.InternalError(c, "failed to update password")
+		return
+	}
+
+	utils.OK(c, gin.H{"message": "password updated"})
 }
 
 func generateToken(user models.User) (string, error) {

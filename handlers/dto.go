@@ -33,6 +33,11 @@ type LoginRequest struct {
 	Password   string `json:"password" binding:"required" example:"secret123"`
 }
 
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required" example:"oldsecret123"`
+	NewPassword     string `json:"new_password" binding:"required,min=8" example:"newsecret123"`
+}
+
 type AuthResponse struct {
 	Token string      `json:"token"`
 	User  UserSummary `json:"user"`
@@ -161,6 +166,15 @@ type UpdateWorkerProfileRequest struct {
 	FullName *string `json:"full_name,omitempty" example:"Ahmed Raza"`
 	Phone    *string `json:"phone,omitempty" example:"+923001234567"`
 	Email    *string `json:"email,omitempty" example:"ahmed@saafislamabad.pk"`
+}
+
+// CreateWorkerRequest is used by staff/admin to add a field worker.
+type CreateWorkerRequest struct {
+	FullName     string     `json:"full_name" binding:"required" example:"Ahmed Raza"`
+	Email        string     `json:"email" binding:"required" example:"ahmed@saafislamabad.pk"`
+	Password     string     `json:"password" binding:"required,min=6" example:"secret123"`
+	Phone        string     `json:"phone,omitempty" example:"+923001234567"`
+	DepartmentID *uuid.UUID `json:"department_id,omitempty"`
 }
 
 // ── Notification ────────────────────────────────────

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/google/uuid"
 	"github.com/zaidejaz/saaf-islamabad-backend/config"
 	"github.com/zaidejaz/saaf-islamabad-backend/models"
 	"golang.org/x/crypto/bcrypt"
@@ -203,7 +204,42 @@ func applySchemaPatches() error {
 			return fmt.Errorf("apply %q: %w", sql, err)
 		}
 	}
+	if err := backfillWorkerManagers(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// backfillWorkerManagers links legacy workers (no managed_by_staff_id) to the
+// active staff member of their department so existing data keeps working.
+func backfillWorkerManagers() error {
+	var workers []models.User
+	if err := DB.Where("role = ? AND is_active = true AND managed_by_staff_id IS NULL AND department_id IS NOT NULL",
+		models.RoleWorker).Find(&workers).Error; err != nil {
+		return err
+	}
+	for _, w := range workers {
+		if w.DepartmentID == nil {
+			continue
+		}
+		staff := activeStaffForDepartmentBackfill(*w.DepartmentID)
+		if staff == nil {
+			continue
+		}
+		if err := DB.Model(&w).Update("managed_by_staff_id", staff.ID).Error; err != nil {
+			log.Printf("warning: backfill worker manager failed (worker=%s): %v", w.ID, err)
+		}
+	}
+	return nil
+}
+
+func activeStaffForDepartmentBackfill(deptID uuid.UUID) *models.User {
+	var staff models.User
+	if err := DB.Where("role = ? AND is_active = true AND department_id = ?", models.RoleStaff, deptID).
+		First(&staff).Error; err != nil {
+		return nil
+	}
+	return &staff
 }
 
 func seedSuperAdmin(cfg *config.Config) {

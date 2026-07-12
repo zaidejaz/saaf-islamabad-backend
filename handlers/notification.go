@@ -12,7 +12,9 @@ import (
 
 type notificationResponse struct {
 	models.Notification
-	ImageURL string `json:"image_url,omitempty"`
+	ImageURL      string `json:"image_url,omitempty"`
+	ReportTitle   string `json:"report_title,omitempty"`
+	ReportAddress string `json:"report_address,omitempty"`
 }
 
 func isResolutionNotification(title, message string) bool {
@@ -50,13 +52,21 @@ func resolutionURLsForReports(reportIDs []uuid.UUID) map[uuid.UUID]string {
 
 func enrichNotifications(notifs []models.Notification) []notificationResponse {
 	reportIDs := make([]uuid.UUID, 0)
+	nearbyReportIDs := make([]uuid.UUID, 0)
 	for _, n := range notifs {
-		if n.ReportID != nil && isResolutionNotification(n.Title, n.Message) {
+		if n.ReportID == nil {
+			continue
+		}
+		if isResolutionNotification(n.Title, n.Message) {
 			reportIDs = append(reportIDs, *n.ReportID)
+		}
+		if n.Type == models.NotifNearbyIssue {
+			nearbyReportIDs = append(nearbyReportIDs, *n.ReportID)
 		}
 	}
 
 	urls := resolutionURLsForReports(reportIDs)
+	reportSummaries := reportSummariesForNotifications(nearbyReportIDs)
 	out := make([]notificationResponse, 0, len(notifs))
 	for _, n := range notifs {
 		item := notificationResponse{Notification: n}
@@ -65,9 +75,37 @@ func enrichNotifications(notifs []models.Notification) []notificationResponse {
 				item.ImageURL = url
 			}
 		}
+		if n.ReportID != nil && n.Type == models.NotifNearbyIssue {
+			if summary, ok := reportSummaries[*n.ReportID]; ok {
+				item.ReportTitle = summary.Title
+				item.ReportAddress = summary.Address
+			}
+		}
 		out = append(out, item)
 	}
 	return out
+}
+
+type reportNotificationSummary struct {
+	Title   string
+	Address string
+}
+
+func reportSummariesForNotifications(reportIDs []uuid.UUID) map[uuid.UUID]reportNotificationSummary {
+	result := make(map[uuid.UUID]reportNotificationSummary)
+	if len(reportIDs) == 0 {
+		return result
+	}
+
+	var reports []models.Report
+	database.DB.Select("id", "title", "address").Where("id IN ?", reportIDs).Find(&reports)
+	for _, report := range reports {
+		result[report.ID] = reportNotificationSummary{
+			Title:   report.Title,
+			Address: report.Address,
+		}
+	}
+	return result
 }
 
 // CreateNotification godoc

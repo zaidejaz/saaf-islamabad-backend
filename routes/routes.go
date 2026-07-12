@@ -30,6 +30,7 @@ func Setup(r *gin.Engine) {
 	protected.Use(middleware.AuthRequired())
 	{
 		protected.GET("/auth/me", handlers.GetMe)
+		protected.PATCH("/auth/change-password", handlers.ChangePassword)
 
 		protected.POST("/uploads", handlers.UploadIssueImage)
 		protected.POST("/classify", handlers.ClassifyIssue)
@@ -58,6 +59,7 @@ func Setup(r *gin.Engine) {
 
 		// Workers directory (staff dispatches to workers).
 		adminStaff.GET("/workers", handlers.ListWorkers)
+		adminStaff.POST("/workers", handlers.CreateWorker)
 		// Staff can soft-delete workers in their team.
 		adminStaff.DELETE("/workers/:id", handlers.DeleteWorker)
 	}
@@ -89,6 +91,14 @@ func Setup(r *gin.Engine) {
 		messaging.POST("/conversations/:id/messages", handlers.SendMessage)
 		messaging.GET("/conversations/:id/messages", handlers.ListMessages)
 		messaging.PATCH("/conversations/:id/read", handlers.MarkConversationRead)
+	}
+
+	// Messaging contact lists (role-scoped; no admin-only /users access needed).
+	contacts := api.Group("/contacts")
+	contacts.Use(middleware.AuthRequired())
+	{
+		contacts.GET("/admins", middleware.RoleRequired(models.RoleStaff), handlers.ListMessagingAdmins)
+		contacts.GET("/staff", middleware.RoleRequired(models.RoleWorker), handlers.ListMessagingStaff)
 	}
 
 	// WebSocket gateway (auth performed inside the handler so query-token

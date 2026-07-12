@@ -106,10 +106,7 @@ func notifyOtherCitizensOfNewReport(report models.Report) {
 	}
 
 	title := "New issue reported nearby"
-	message := fmt.Sprintf(
-		"Another citizen reported an issue%s. Open the map to see what is happening in your area.",
-		titleSuffix(report.Title),
-	)
+	message := "Another citizen reported an issue nearby. Open the map to see what is happening in your area."
 
 	for _, citizen := range citizens {
 		notifyOnce(citizen.ID, &report.ID, title, message, models.NotifNearbyIssue)
@@ -186,6 +183,36 @@ func staffCanAccessReport(staff models.User, report models.Report) bool {
 		return false
 	}
 	return *staff.DepartmentID == *report.DepartmentID
+}
+
+func loadStaffDepartmentID(staffID uuid.UUID) (*uuid.UUID, error) {
+	var staff models.User
+	if err := database.DB.First(&staff, "id = ? AND role = ? AND is_active = true", staffID, models.RoleStaff).Error; err != nil {
+		return nil, err
+	}
+	return staff.DepartmentID, nil
+}
+
+func workerMatchesDepartment(worker models.User, deptID *uuid.UUID) bool {
+	if deptID == nil || worker.DepartmentID == nil {
+		return false
+	}
+	return *worker.DepartmentID == *deptID
+}
+
+func workerManagedByStaff(worker models.User, staffID uuid.UUID) bool {
+	return worker.ManagedByStaffID != nil && *worker.ManagedByStaffID == staffID
+}
+
+func staffOwnsWorker(staffID uuid.UUID, staffDeptID *uuid.UUID, worker models.User) bool {
+	if workerManagedByStaff(worker, staffID) {
+		return true
+	}
+	// Legacy workers (created before managed_by_staff_id) fall back to department match.
+	if worker.ManagedByStaffID == nil && staffDeptID != nil {
+		return workerMatchesDepartment(worker, staffDeptID)
+	}
+	return false
 }
 
 func loadStaffUser(staffID uuid.UUID) (models.User, error) {

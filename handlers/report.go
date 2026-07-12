@@ -186,6 +186,12 @@ func ListReports(c *gin.Context) {
 		Offset(utils.GetOffset(page, pageSize)).Limit(pageSize).
 		Order("created_at DESC").Find(&reports)
 
+	if role == models.RoleCitizen && c.Query("scope") == "community" {
+		userID := c.MustGet("user_id").(uuid.UUID)
+		utils.Paginated(c, redactCommunityReportsForCitizen(userID, reports), page, pageSize, total)
+		return
+	}
+
 	utils.Paginated(c, reports, page, pageSize, total)
 }
 
@@ -216,12 +222,18 @@ func GetReport(c *gin.Context) {
 	}
 
 	role := c.MustGet("user_role").(models.Role)
+	userID := c.MustGet("user_id").(uuid.UUID)
 	if role == models.RoleStaff {
-		staff, err := loadStaffUser(c.MustGet("user_id").(uuid.UUID))
+		staff, err := loadStaffUser(userID)
 		if err != nil || !staffCanAccessReport(staff, report) {
 			utils.Forbidden(c, "report is not in your department")
 			return
 		}
+	}
+
+	if role == models.RoleCitizen && !citizenOwnsReport(userID, report) {
+		utils.OK(c, toCommunityReportView(report))
+		return
 	}
 
 	utils.OK(c, report)

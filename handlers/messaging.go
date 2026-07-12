@@ -27,6 +27,33 @@ func channelFor(a, b models.Role) (models.MessageChannel, bool) {
 	return "", false
 }
 
+func validateConversationPair(meID uuid.UUID, myRole models.Role, other models.User) error {
+	switch {
+	case myRole == models.RoleStaff && other.Role == models.RoleWorker:
+		staffDeptID, err := loadStaffDepartmentID(meID)
+		if err != nil {
+			return errors.New("staff profile not found")
+		}
+		if !staffOwnsWorker(meID, staffDeptID, other) {
+			return errors.New("worker is not on your team")
+		}
+	case myRole == models.RoleWorker && other.Role == models.RoleStaff:
+		var me models.User
+		if err := database.DB.First(&me, "id = ?", meID).Error; err != nil {
+			return errors.New("profile not found")
+		}
+		if me.ManagedByStaffID != nil && *me.ManagedByStaffID != other.ID {
+			return errors.New("you can only message your dispatching staff")
+		}
+		if me.ManagedByStaffID == nil {
+			if me.DepartmentID == nil || other.DepartmentID == nil || *me.DepartmentID != *other.DepartmentID {
+				return errors.New("staff is not in your department")
+			}
+		}
+	}
+	return nil
+}
+
 // CreateConversation godoc
 // @Summary      Open or fetch a 1:1 conversation
 // @Description  Returns the existing chat with the participant if one exists, otherwise creates a new conversation. Allowed pairs: admin↔staff and staff↔worker. Citizens are not permitted.
@@ -63,6 +90,11 @@ func CreateConversation(c *gin.Context) {
 	channel, ok := channelFor(myRole, other.Role)
 	if !ok {
 		utils.Forbidden(c, "messaging is not allowed between these roles")
+		return
+	}
+
+	if err := validateConversationPair(meID, myRole, other); err != nil {
+		utils.Forbidden(c, err.Error())
 		return
 	}
 

@@ -147,6 +147,18 @@ func AssignWorker(c *gin.Context) {
 		return
 	}
 
+	if role == models.RoleStaff {
+		staffDeptID, err := loadStaffDepartmentID(staffID)
+		if err != nil {
+			utils.Forbidden(c, "staff profile not found")
+			return
+		}
+		if !staffOwnsWorker(staffID, staffDeptID, worker) {
+			utils.Forbidden(c, "worker is not on your team")
+			return
+		}
+	}
+
 	var report models.Report
 	if err := database.DB.First(&report, "id = ?", assignment.ReportID).Error; err != nil {
 		utils.InternalError(c, "report not found for assignment")

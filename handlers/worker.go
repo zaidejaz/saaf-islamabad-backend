@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"net/mail"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/zaidejaz/saaf-islamabad-backend/database"
 	"github.com/zaidejaz/saaf-islamabad-backend/models"
 	"github.com/zaidejaz/saaf-islamabad-backend/utils"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -368,6 +370,20 @@ func DeleteWorker(c *gin.Context) {
 		return
 	}
 
+	role := c.MustGet("user_role").(models.Role)
+	if role == models.RoleStaff {
+		staffID := c.MustGet("user_id").(uuid.UUID)
+		staffDeptID, err := loadStaffDepartmentID(staffID)
+		if err != nil {
+			utils.Forbidden(c, "staff profile not found")
+			return
+		}
+		if !staffOwnsWorker(staffID, staffDeptID, worker) {
+			utils.Forbidden(c, "worker is not on your team")
+			return
+		}
+	}
+
 	if err := softDeleteUser(&worker); err != nil {
 		utils.InternalError(c, "failed to delete worker")
 		return
@@ -391,13 +407,140 @@ func DeleteWorker(c *gin.Context) {
 // @Router       /workers [get]
 func ListWorkers(c *gin.Context) {
 	page, pageSize := utils.GetPagination(c)
-	var total int64
-	var users []models.User
+	role := c.MustGet("user_role").(models.Role)
+	userID := c.MustGet("user_id").(uuid.UUID)
 
 	q := database.DB.Model(&models.User{}).Where("is_active = true AND role = ?", models.RoleWorker)
+
+	switch role {
+	case models.RoleStaff:
+		staffDeptID, err := loadStaffDepartmentID(userID)
+		if err != nil {
+			utils.Forbidden(c, "staff profile not found")
+			return
+		}
+		if staffDeptID == nil {
+			utils.Paginated(c, []models.User{}, page, pageSize, 0)
+			return
+		}
+		q = q.Where(
+			"managed_by_staff_id = ? OR (managed_by_staff_id IS NULL AND department_id = ?)",
+			userID, *staffDeptID,
+		)
+	case models.RoleAdmin:
+		if deptID := strings.TrimSpace(c.Query("department_id")); deptID != "" {
+			q = q.Where("department_id = ?", deptID)
+		}
+	}
+
+	var total int64
 	q.Count(&total)
+
+	var users []models.User
 	q.Preload("Department").Offset(utils.GetOffset(page, pageSize)).Limit(pageSize).
 		Order("created_at DESC").Find(&users)
 
 	utils.Paginated(c, users, page, pageSize, total)
+}
+
+// CreateWorker godoc
+// @Summary      Create a field worker (staff/admin)
+// @Description  Staff creates a worker in their department. The worker is linked to that staff member and only they can dispatch them.
+// @Tags         Worker
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body  body      CreateWorkerRequest  true  "Worker account"
+// @Success      201   {object}  utils.APIResponse{data=models.User}
+// @Failure      400   {object}  utils.APIResponse
+// @Failure      409   {object}  utils.APIResponse
+// @Router       /workers [post]
+func CreateWorker(c *gin.Context) {
+	var req CreateWorkerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+
+	creatorID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(models.Role)
+
+	emailLower := strings.ToLower(strings.TrimSpace(req.Email))
+	if _, err := mail.ParseAddress(emailLower); err != nil {
+		utils.BadRequest(c, "invalid email format")
+		return
+	}
+	if exists, err := userExistsByEmail(emailLower); err != nil {
+		utils.InternalError(c, "lookup failed")
+		return
+	} else if exists {
+		utils.Error(c, http.StatusConflict, "email already registered")
+		return
+	}
+
+	worker := models.User{
+		FullName:   strings.TrimSpace(req.FullName),
+		Email:      &emailLower,
+		Role:       models.RoleWorker,
+		IsVerified: true,
+		IsActive:   true,
+	}
+
+	if req.Phone != "" {
+		phone, err := utils.NormalizePKPhone(req.Phone)
+		if err != nil {
+			utils.BadRequest(c, err.Error())
+			return
+		}
+		if exists, err := userExistsByPhone(phone); err != nil {
+			utils.InternalError(c, "lookup failed")
+			return
+		} else if exists {
+			utils.Error(c, http.StatusConflict, "phone already registered")
+			return
+		}
+		worker.Phone = &phone
+	}
+
+	switch role {
+	case models.RoleStaff:
+		staffDeptID, err := loadStaffDepartmentID(creatorID)
+		if err != nil || staffDeptID == nil {
+			utils.Forbidden(c, "staff must belong to a department to create workers")
+			return
+		}
+		worker.DepartmentID = staffDeptID
+		worker.ManagedByStaffID = &creatorID
+	case models.RoleAdmin:
+		if req.DepartmentID == nil {
+			utils.BadRequest(c, "department_id is required when admin creates a worker")
+			return
+		}
+		if !departmentExists(*req.DepartmentID) {
+			utils.BadRequest(c, "department not found")
+			return
+		}
+		worker.DepartmentID = req.DepartmentID
+		if staff := activeStaffForDepartment(*req.DepartmentID); staff != nil {
+			worker.ManagedByStaffID = &staff.ID
+		}
+	default:
+		utils.Forbidden(c, "only staff or admin can create workers")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		utils.InternalError(c, "failed to hash password")
+		return
+	}
+	worker.PasswordHash = string(hash)
+
+	if err := database.DB.Create(&worker).Error; err != nil {
+		utils.InternalError(c, "failed to create worker")
+		return
+	}
+
+	database.DB.Preload("Department").First(&worker, "id = ?", worker.ID)
+	utils.Created(c, worker)
 }
