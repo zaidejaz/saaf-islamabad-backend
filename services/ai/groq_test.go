@@ -61,3 +61,21 @@ func TestLocalUploadPath(t *testing.T) {
 		t.Fatal("localhost upload url should resolve")
 	}
 }
+
+func TestIsQwen36(t *testing.T) {
+	if !isQwen36("qwen/qwen3.6-27b") {
+		t.Fatal("expected qwen3.6 match")
+	}
+	if isQwen36("qwen/qwen3-32b") {
+		t.Fatal("qwen3-32b should not match qwen3.6 helper")
+	}
+	if isQwen36("meta-llama/llama-4-scout-17b-16e-instruct") {
+		t.Fatal("llama should not match")
+	}
+}
+
+func TestFirstNonEmpty(t *testing.T) {
+	if got := firstNonEmpty("", "  ", `{"ok":true}`); got != `{"ok":true}` {
+		t.Fatalf("got %q", got)
+	}
+}

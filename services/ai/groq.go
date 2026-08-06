@@ -95,8 +95,15 @@ func (c *OpenAICompatibleClassifier) Classify(ctx context.Context, req ClassifyR
 			},
 		},
 		"temperature":     0.2,
-		"max_tokens":      600,
+		"max_tokens":      1024,
 		"response_format": map[string]string{"type": "json_object"},
+	}
+	// Qwen 3.6 defaults to thinking mode. With JSON mode that often yields
+	// empty content and Groq's json_validate_failed (failed_generation="").
+	// Disable reasoning so the model emits JSON in message.content.
+	if isQwen36(c.model) {
+		payload["reasoning_effort"] = "none"
+		payload["reasoning_format"] = "hidden"
 	}
 
 	body, err := json.Marshal(payload)
@@ -128,24 +135,45 @@ func (c *OpenAICompatibleClassifier) Classify(ctx context.Context, req ClassifyR
 	var chatResp struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content          string `json:"content"`
+				Reasoning        string `json:"reasoning"`
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrParse, err)
 	}
-	if len(chatResp.Choices) == 0 || strings.TrimSpace(chatResp.Choices[0].Message.Content) == "" {
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("%w: empty model content", ErrParse)
+	}
+	msg := chatResp.Choices[0].Message
+	modelText := firstNonEmpty(msg.Content, msg.Reasoning, msg.ReasoningContent)
+	if strings.TrimSpace(modelText) == "" {
 		return nil, fmt.Errorf("%w: empty model content", ErrParse)
 	}
 
-	raw := extractJSONObject(chatResp.Choices[0].Message.Content)
+	raw := extractJSONObject(modelText)
 	var result ClassifyResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrParse, err)
 	}
 
 	return normalizeResult(&result, req.Categories), nil
+}
+
+func isQwen36(model string) bool {
+	m := strings.ToLower(model)
+	return strings.Contains(m, "qwen3.6") || strings.Contains(m, "qwen3-6")
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // resolveImageParts turns backend /uploads paths into base64 data URLs so
