@@ -52,6 +52,7 @@ func Connect(cfg *config.Config) {
 		&models.Conversation{},
 		&models.ConversationParticipant{},
 		&models.Message{},
+		&models.PasswordResetAudit{},
 	)
 	if err != nil {
 		log.Fatalf("auto-migration failed: %v", err)

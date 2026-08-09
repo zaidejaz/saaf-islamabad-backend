@@ -315,8 +315,9 @@ func ChangePassword(c *gin.Context) {
 
 func generateToken(user models.User) (string, error) {
 	claims := middleware.Claims{
-		UserID: user.ID,
-		Role:   user.Role,
+		UserID:       user.ID,
+		Role:         user.Role,
+		TokenVersion: user.TokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(72 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

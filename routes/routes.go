@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/zaidejaz/saaf-islamabad-backend/handlers"
 	"github.com/zaidejaz/saaf-islamabad-backend/middleware"
@@ -62,6 +64,17 @@ func Setup(r *gin.Engine) {
 		adminStaff.POST("/workers", handlers.CreateWorker)
 		// Staff can soft-delete workers in their team.
 		adminStaff.DELETE("/workers/:id", handlers.DeleteWorker)
+	}
+
+	// Password reset for workers (rate-limited; ownership enforced in handler).
+	workerReset := api.Group("")
+	workerReset.Use(
+		middleware.AuthRequired(),
+		middleware.RoleRequired(models.RoleAdmin, models.RoleStaff),
+		middleware.PasswordResetRateLimit(5, 15*time.Minute),
+	)
+	{
+		workerReset.POST("/workers/:id/reset-password", handlers.ResetWorkerPassword)
 	}
 
 	// ── Assignments listing for any non-citizen role ─
@@ -129,5 +142,18 @@ func Setup(r *gin.Engine) {
 
 		admin.POST("/safety-alerts", handlers.CreateSafetyAlert)
 		admin.DELETE("/safety-alerts/:id", handlers.DeleteSafetyAlert)
+
+		admin.DELETE("/reports/:id", handlers.DeleteReport)
+	}
+
+	// Password reset for staff (admin-only, rate-limited).
+	staffReset := api.Group("")
+	staffReset.Use(
+		middleware.AuthRequired(),
+		middleware.RoleRequired(models.RoleAdmin),
+		middleware.PasswordResetRateLimit(5, 15*time.Minute),
+	)
+	{
+		staffReset.POST("/users/:id/reset-password", handlers.ResetStaffPassword)
 	}
 }

@@ -35,6 +35,8 @@ type User struct {
 	Department   *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
 	// Workers created by a department staff member; used to scope worker lists and dispatch.
 	ManagedByStaffID *uuid.UUID `gorm:"type:uuid;index" json:"managed_by_staff_id,omitempty"`
+	// TokenVersion is bumped on admin/staff password reset to invalidate existing JWTs.
+	TokenVersion int        `gorm:"not null;default:0" json:"-"`
 	IsVerified   bool       `gorm:"default:false" json:"is_verified"`
 	IsActive     bool       `gorm:"default:true" json:"is_active"`
 	DeletedAt    *time.Time `json:"deleted_at,omitempty"`

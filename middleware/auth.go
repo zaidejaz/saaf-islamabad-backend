@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/zaidejaz/saaf-islamabad-backend/database"
 	"github.com/zaidejaz/saaf-islamabad-backend/models"
 )
 
@@ -17,8 +18,9 @@ func InitJWT(secret string) {
 }
 
 type Claims struct {
-	UserID uuid.UUID   `json:"user_id"`
-	Role   models.Role `json:"role"`
+	UserID       uuid.UUID   `json:"user_id"`
+	Role         models.Role `json:"role"`
+	TokenVersion int         `json:"token_version"`
 	jwt.RegisteredClaims
 }
 
@@ -47,6 +49,19 @@ func AuthRequired() gin.HandlerFunc {
 		claims, ok := token.Claims.(*Claims)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			return
+		}
+
+		var tokenVersion int
+		if err := database.DB.Model(&models.User{}).
+			Select("token_version").
+			Where("id = ?", claims.UserID).
+			Scan(&tokenVersion).Error; err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+		if claims.TokenVersion != tokenVersion {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
 			return
 		}
 

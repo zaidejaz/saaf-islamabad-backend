@@ -31,6 +31,11 @@ func CreateReport(c *gin.Context) {
 
 	userID := c.MustGet("user_id").(uuid.UUID)
 
+	if len(req.ImageURLs) > 1 {
+		utils.BadRequest(c, "only one image is allowed per report")
+		return
+	}
+
 	shouldClassify := false
 	if req.AutoClassify != nil {
 		shouldClassify = *req.AutoClassify
@@ -183,6 +188,7 @@ func ListReports(c *gin.Context) {
 
 	q.Count(&total)
 	q.Preload("Category").Preload("Department").Preload("Images").
+		Preload("StatusHistory").Preload("StatusHistory.Changer").
 		Offset(utils.GetOffset(page, pageSize)).Limit(pageSize).
 		Order("created_at DESC").Find(&reports)
 
@@ -525,5 +531,76 @@ func GetReportStats(c *gin.Context) {
 		"by_status":      byStatus,
 		"by_severity":    bySeverity,
 		"resolved_today": resolvedToday,
+	})
+}
+
+// DeleteReport godoc
+// @Summary      Delete a report (admin)
+// @Description  Permanently deletes a report and its related images, status history, assignments, and safety alerts. Notification report links are cleared.
+// @Tags         Reports
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path  string  true  "Report UUID"
+// @Success      200  {object}  utils.APIResponse
+// @Failure      400  {object}  utils.APIResponse
+// @Failure      404  {object}  utils.APIResponse
+// @Router       /reports/{id} [delete]
+func DeleteReport(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.BadRequest(c, "invalid report id")
+		return
+	}
+
+	var report models.Report
+	if err := database.DB.First(&report, "id = ?", id).Error; err != nil {
+		utils.NotFound(c, "report not found")
+		return
+	}
+
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		utils.InternalError(c, "failed to delete report")
+		return
+	}
+
+	if err := tx.Where("report_id = ?", id).Delete(&models.ReportImage{}).Error; err != nil {
+		tx.Rollback()
+		utils.InternalError(c, "failed to delete report images")
+		return
+	}
+	if err := tx.Where("report_id = ?", id).Delete(&models.ReportStatusHistory{}).Error; err != nil {
+		tx.Rollback()
+		utils.InternalError(c, "failed to delete report history")
+		return
+	}
+	if err := tx.Where("report_id = ?", id).Delete(&models.Assignment{}).Error; err != nil {
+		tx.Rollback()
+		utils.InternalError(c, "failed to delete report assignments")
+		return
+	}
+	if err := tx.Where("report_id = ?", id).Delete(&models.SafetyAlert{}).Error; err != nil {
+		tx.Rollback()
+		utils.InternalError(c, "failed to delete related safety alerts")
+		return
+	}
+	if err := tx.Model(&models.Notification{}).Where("report_id = ?", id).Update("report_id", nil).Error; err != nil {
+		tx.Rollback()
+		utils.InternalError(c, "failed to clear notification links")
+		return
+	}
+	if err := tx.Delete(&report).Error; err != nil {
+		tx.Rollback()
+		utils.InternalError(c, "failed to delete report")
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		utils.InternalError(c, "failed to delete report")
+		return
+	}
+
+	utils.OK(c, gin.H{
+		"message": "report deleted",
+		"id":      id,
 	})
 }

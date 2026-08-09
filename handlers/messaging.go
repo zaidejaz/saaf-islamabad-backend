@@ -162,9 +162,22 @@ func ListConversations(c *gin.Context) {
 	meID := c.MustGet("user_id").(uuid.UUID)
 	page, pageSize := utils.GetPagination(c)
 
+	// Only conversations where every other participant is still active —
+	// soft-deleted users are purged from messaging, and this filters leftovers.
 	var convIDs []uuid.UUID
-	database.DB.Model(&models.ConversationParticipant{}).
-		Where("user_id = ?", meID).Pluck("conversation_id", &convIDs)
+	database.DB.Raw(`
+		SELECT cp1.conversation_id
+		FROM conversation_participants cp1
+		WHERE cp1.user_id = ?
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM conversation_participants cp2
+			JOIN users u ON u.id = cp2.user_id
+			WHERE cp2.conversation_id = cp1.conversation_id
+			  AND cp2.user_id <> ?
+			  AND u.is_active = false
+		  )
+	`, meID, meID).Scan(&convIDs)
 
 	if len(convIDs) == 0 {
 		utils.Paginated(c, []models.Conversation{}, page, pageSize, 0)
@@ -238,6 +251,16 @@ func SendMessage(c *gin.Context) {
 	}
 	if receiverID == uuid.Nil {
 		utils.InternalError(c, "conversation is missing a receiver")
+		return
+	}
+
+	var receiver models.User
+	if err := database.DB.Select("id", "is_active").First(&receiver, "id = ?", receiverID).Error; err != nil {
+		utils.NotFound(c, "receiver not found")
+		return
+	}
+	if !receiver.IsActive {
+		utils.Forbidden(c, "cannot message a deleted or inactive user")
 		return
 	}
 

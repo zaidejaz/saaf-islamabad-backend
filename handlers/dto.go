@@ -38,6 +38,11 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"new_password" binding:"required,min=8" example:"newsecret123"`
 }
 
+// ResetPasswordRequest is used by staff/admin to set a new password for another user.
+type ResetPasswordRequest struct {
+	Password string `json:"password" binding:"required,min=8" example:"newsecret123"`
+}
+
 type AuthResponse struct {
 	Token string      `json:"token"`
 	User  UserSummary `json:"user"`

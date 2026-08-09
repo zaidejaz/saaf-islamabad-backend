@@ -209,7 +209,7 @@ func UpdateUser(c *gin.Context) {
 
 // DeactivateUser godoc
 // @Summary      Soft-delete a user (admin)
-// @Description  Anonymises the user's email + name and marks the account inactive. Linked records (reports, assignments, messages, analytics) remain queryable. Admins use this for staff/citizens; staff use DELETE /workers/{id} for workers.
+// @Description  Anonymises the user's email + name and marks the account inactive. Linked reports/assignments/analytics remain queryable. Messaging threads involving the user are deleted. Admins use this for staff/citizens; staff use DELETE /workers/{id} for workers.
 // @Tags         Users
 // @Produce      json
 // @Security     BearerAuth
@@ -298,8 +298,9 @@ func ReactivateUser(c *gin.Context) {
 }
 
 // softDeleteUser scrubs PII from a user record and flips it inactive while
-// keeping the row (and its uuid) so that reports, assignments, messages and
-// analytics still resolve their foreign keys.
+// keeping the row (and its uuid) so that reports, assignments and analytics
+// still resolve their foreign keys. Messaging threads involving the user are
+// removed entirely so deleted accounts disappear from chats.
 //
 // Email is rewritten to `deleted_<id>@removed.local`, the phone is nullified
 // (the unique index lets the slot be reclaimed by re-registration), and the
@@ -308,16 +309,104 @@ func softDeleteUser(user *models.User) error {
 	now := time.Now()
 	anonymisedEmail := fmt.Sprintf("deleted_%s@removed.local", user.ID.String())
 
-	updates := map[string]interface{}{
-		"email":      anonymisedEmail,
-		"phone":      nil,
-		"full_name":  "[deleted user]",
-		"is_active":  false,
-		"deleted_at": &now,
-		"updated_at": &now,
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := purgeUserMessaging(tx, user.ID); err != nil {
+			return err
+		}
+
+		updates := map[string]interface{}{
+			"email":      anonymisedEmail,
+			"phone":      nil,
+			"full_name":  "[deleted user]",
+			"is_active":  false,
+			"deleted_at": &now,
+			"updated_at": &now,
+		}
+		return tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error
+	})
+}
+
+// purgeUserMessaging deletes every conversation the user participates in,
+// including messages and participant rows, plus any stray messages that still
+// reference them as sender/receiver.
+func purgeUserMessaging(tx *gorm.DB, userID uuid.UUID) error {
+	var convIDs []uuid.UUID
+	if err := tx.Model(&models.ConversationParticipant{}).
+		Where("user_id = ?", userID).
+		Pluck("conversation_id", &convIDs).Error; err != nil {
+		return err
 	}
 
-	return database.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error
+	if len(convIDs) > 0 {
+		if err := tx.Where("conversation_id IN ?", convIDs).Delete(&models.Message{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("conversation_id IN ?", convIDs).Delete(&models.ConversationParticipant{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id IN ?", convIDs).Delete(&models.Conversation{}).Error; err != nil {
+			return err
+		}
+	}
+
+	return tx.Where("sender_id = ? OR receiver_id = ?", userID, userID).
+		Delete(&models.Message{}).Error
+}
+
+// ResetStaffPassword godoc
+// @Summary      Reset a staff member's password (admin)
+// @Description  Admin-only. Target must be an active staff user. Returns the new plaintext password once.
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id    path  string               true  "User UUID"
+// @Param        body  body  ResetPasswordRequest true  "Generate or set password"
+// @Success      200   {object}  utils.APIResponse
+// @Failure      400   {object}  utils.APIResponse
+// @Failure      403   {object}  utils.APIResponse
+// @Failure      404   {object}  utils.APIResponse
+// @Router       /users/{id}/reset-password [post]
+func ResetStaffPassword(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.BadRequest(c, "invalid user id")
+		return
+	}
+
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+
+	var target models.User
+	if err := database.DB.First(&target, "id = ? AND is_active = true", id).Error; err != nil {
+		utils.NotFound(c, "user not found")
+		return
+	}
+	if target.Role != models.RoleStaff {
+		utils.BadRequest(c, "only staff passwords can be reset via this endpoint")
+		return
+	}
+
+	plaintext, err := resolveResetPassword(req)
+	if err != nil {
+		if errors.Is(err, errPasswordTooShort) {
+			utils.BadRequest(c, err.Error())
+			return
+		}
+		utils.BadRequest(c, err.Error())
+		return
+	}
+
+	actorID := c.MustGet("user_id").(uuid.UUID)
+	if err := applyPasswordReset(actorID, target.ID, plaintext); err != nil {
+		utils.InternalError(c, "failed to reset password")
+		return
+	}
+
+	respondPasswordReset(c, target.ID, plaintext)
 }
 
 // assertUserFieldUnique returns an error if any other user already owns the

@@ -73,10 +73,14 @@ func WSMessages(c *gin.Context) {
 		return
 	}
 
-	// Confirm the user is still active.
+	// Confirm the user is still active and the token has not been revoked.
 	var user models.User
 	if err := database.DB.First(&user, "id = ? AND is_active = true", claims.UserID).Error; err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user no longer active"})
+		return
+	}
+	if claims.TokenVersion != user.TokenVersion {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
 		return
 	}
 

@@ -544,3 +544,69 @@ func CreateWorker(c *gin.Context) {
 	database.DB.Preload("Department").First(&worker, "id = ?", worker.ID)
 	utils.Created(c, worker)
 }
+
+// ResetWorkerPassword godoc
+// @Summary      Reset a worker's password (staff/admin)
+// @Description  Staff may reset only workers they manage. Admin may reset any worker. Returns the new plaintext password once.
+// @Tags         Worker
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id    path  string               true  "Worker UUID"
+// @Param        body  body  ResetPasswordRequest true  "Generate or set password"
+// @Success      200   {object}  utils.APIResponse
+// @Failure      400   {object}  utils.APIResponse
+// @Failure      403   {object}  utils.APIResponse
+// @Failure      404   {object}  utils.APIResponse
+// @Router       /workers/{id}/reset-password [post]
+func ResetWorkerPassword(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		utils.BadRequest(c, "invalid worker id")
+		return
+	}
+
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, err.Error())
+		return
+	}
+
+	var worker models.User
+	if err := database.DB.First(&worker, "id = ? AND role = ? AND is_active = true", id, models.RoleWorker).Error; err != nil {
+		utils.NotFound(c, "worker not found")
+		return
+	}
+
+	actorID := c.MustGet("user_id").(uuid.UUID)
+	role := c.MustGet("user_role").(models.Role)
+	if role == models.RoleStaff {
+		staffDeptID, err := loadStaffDepartmentID(actorID)
+		if err != nil {
+			utils.Forbidden(c, "staff profile not found")
+			return
+		}
+		if !staffOwnsWorker(actorID, staffDeptID, worker) {
+			utils.Forbidden(c, "worker is not on your team")
+			return
+		}
+	}
+
+	plaintext, err := resolveResetPassword(req)
+	if err != nil {
+		if errors.Is(err, errPasswordTooShort) {
+			utils.BadRequest(c, err.Error())
+			return
+		}
+		utils.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := applyPasswordReset(actorID, worker.ID, plaintext); err != nil {
+		utils.InternalError(c, "failed to reset password")
+		return
+	}
+
+	respondPasswordReset(c, worker.ID, plaintext)
+}
+
